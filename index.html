@@ -66,9 +66,8 @@
 <script>
 let tableId = null;
 
-grist.ready({ requiredAccess: 'readOnly' });
+grist.ready({ requiredAccess: 'read table' });
 
-/* CONFIG PANEL DERECHO */
 grist.on('configure', () => {
   grist.customSectionAPI.configure({
     settings: [{
@@ -80,52 +79,14 @@ grist.on('configure', () => {
   });
 });
 
-grist.on('settings', (s) => {
-  tableId = s?.tableId || null;
+grist.on('settings', (settings) => {
+  console.log("⚙️ Settings recibidos:", settings);
+  tableId = settings?.tableId?.trim() || null;
 });
-
-document.getElementById("analyze").onclick = async () => {
-  const out = document.getElementById("output");
-  const promptText = document.getElementById("prompt").innerText.trim();
-
-  if (!promptText) {
-    out.innerHTML = "<span class='error'>❌ Escribí un prompt primero.</span>";
-    return;
-  }
-
-  if (!tableId) {
-    out.innerHTML = "<span class='error'>❌ Configurá el ID de la tabla.</span>";
-    return;
-  }
-
-  try {
-    out.textContent = "⏳ Leyendo tabla…";
-
-    const table = await grist.docApi.fetchTable(tableId);
-
-    if (!table?.records?.length) {
-      throw new Error("La tabla está vacía o no existe.");
-    }
-
-    out.textContent =
-`✅ Tabla: ${tableId}
-Filas: ${table.records.length}
-Columnas: ${Object.keys(table.records[0]).join(", ")}
-
-🧠 Prompt:
-${promptText}
-
-👉 Lista para análisis IA`;
-
-    // 🔜 acá va Groq / OpenAI
-
-  } catch (e) {
-    out.innerHTML = `<span class="error">❌ ${e.message}</span>`;
-    console.error(e);
-  }
-};
 </script>
+
 
 </body>
 </html>
+
 

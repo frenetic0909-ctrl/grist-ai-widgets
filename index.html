@@ -41,9 +41,14 @@
       res.innerText = "Procesando con Groq...";
 
       try {
-        const row = await grist.fetchSelectedRecord();
-        if(!row || row.id === 0) throw new Error("Selecciona una fila en la tabla primero.");
-
+        // Busca esta parte en tu función btn.onclick:
+const row = await grist.fetchSelectedRecord();
+// Agrega esto justo debajo:
+if (!row || Object.keys(row).length <= 1) { 
+  res.innerText = "Error: No hay datos. Asegúrate de seleccionar columnas en el panel derecho.";
+  btn.disabled = false;
+  return;
+}
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -71,3 +76,4 @@
   </script>
 </body>
 </html>
+

@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Grist IA Bridge - Mapeo Estable</title>
+  <title>Grist IA Bridge - Estable</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+
   <style>
     body { font-family: sans-serif; margin: 15px; background-color: #1e1e1e; color: #e0e0e0; }
     h3 { color: #f5a623; display: flex; justify-content: space-between; align-items: center; }
@@ -47,7 +48,7 @@
     Grist IA Bridge (Groq)
     <button class="secondary" onclick="resetKey()">Borrar API Key</button>
   </h3>
-  
+
   <div class="card">
     <label>Instrucción para la IA:</label><br><br>
     <textarea id="prompt" rows="3">
@@ -61,7 +62,7 @@ Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
   <div id="result">El resultado aparecerá aquí...</div>
 
   <script>
-    // 🔹 Configuración inicial del widget
+    // 🔹 Inicialización del widget
     grist.ready({
       requiredAccess: 'full',
       columns: [
@@ -79,7 +80,7 @@ Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
       const btn = document.getElementById('btn');
       const res = document.getElementById('result');
       const status = document.getElementById('status-text');
-      
+
       let key = localStorage.getItem('groq_api_key');
       if (!key) {
         key = prompt("Introduce tu API Key de Groq (gsk_...):");
@@ -88,31 +89,27 @@ Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
       }
 
       btn.disabled = true;
-      status.innerText = "Leyendo datos desde Grist...";
+      status.innerText = "Leyendo fila seleccionada desde Grist...";
 
       try {
-        // 🔹 Obtenemos la fila seleccionada
+        // 🔹 Traemos la fila seleccionada
         const row = await grist.fetchSelectedRecord();
+
+        // 🔍 DEBUG CRÍTICO
+        console.log("📌 ROW COMPLETO:", row);
+        console.log("📌 ANALIZAR (valores mapeados):", row?.Analizar);
 
         if (!row || !row.Analizar || row.Analizar.length === 0) {
           throw new Error("Seleccioná al menos una columna en la sección ANALIZAR.");
         }
 
-        // 🔹 Construimos el objeto real con datos
-        const cleanData = {};
-        for (const col of row.Analizar) {
-          cleanData[col] = row[col];
-        }
+        // ✔️ Grist devuelve directamente LOS VALORES
+        const cleanData = row.Analizar;
 
-        if (Object.keys(cleanData).length === 0) {
-          throw new Error("Las columnas seleccionadas no contienen datos.");
-        }
-
-        console.log("Datos enviados a IA:", cleanData);
+        console.log("✅ DATOS ENVIADOS A IA:", cleanData);
 
         status.innerText = "Procesando con Groq IA...";
 
-        // 🔹 Llamada a Groq
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -123,9 +120,15 @@ Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
             model: "llama-3.3-70b-versatile",
             messages: [
               { role: "system", content: "Eres un analista experto en datos." },
-              { 
-                role: "user", 
-                content: `Datos:\n${JSON.stringify(cleanData, null, 2)}\n\nInstrucción:\n${document.getElementById('prompt').value}` 
+              {
+                role: "user",
+                content: `
+Datos seleccionados:
+${JSON.stringify(cleanData, null, 2)}
+
+Instrucción:
+${document.getElementById('prompt').value}
+                `
               }
             ],
             temperature: 0.5
@@ -136,9 +139,10 @@ Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
         if (json.error) throw new Error(json.error.message);
 
         res.innerText = json.choices[0].message.content;
-        status.innerText = "Análisis completado.";
+        status.innerText = "Análisis completado correctamente.";
 
       } catch (e) {
+        console.error("❌ ERROR:", e);
         res.innerText = "❌ Error: " + e.message;
         status.innerText = "Error detectado.";
       } finally {

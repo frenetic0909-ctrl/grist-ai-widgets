@@ -1,143 +1,70 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Grist AI Bridge - Gemini 3</title>
+  <title>Grist AI Bridge - Stable</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 15px; background-color: #2e2e2e; color: #f0f0f0; }
-    h3 { color: #58b668; display: flex; justify-content: space-between; align-items: center; }
-    .section { margin-bottom: 20px; padding: 15px; border: 1px solid #444; border-radius: 5px; background-color: #3a3a3a; }
-    label { display: block; margin-bottom: 5px; font-weight: bold; }
-    select, textarea { width: calc(100% - 10px); padding: 8px; margin-bottom: 10px; border: 1px solid #555; border-radius: 4px; background-color: #4a4a4a; color: #f0f0f0; }
-    button { background-color: #58b668; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-right: 10px; }
-    button:hover { background-color: #4aa05d; }
-    button.secondary { background-color: #666; }
-    #result-area { margin-top: 20px; padding: 15px; border: 1px solid #58b668; border-radius: 5px; background-color: #2e2e2e; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; }
-    .loading-spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #58b668; width: 20px; height: 20px; animation: spin 1s linear infinite; display: none; vertical-align: middle; margin-left: 10px; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    body { font-family: sans-serif; margin: 10px; background-color: #2e2e2e; color: #f0f0f0; }
+    .card { background: #3a3a3a; padding: 10px; border-radius: 5px; border: 1px solid #444; margin-bottom: 10px; }
+    textarea { width: 95%; padding: 8px; background: #4a4a4a; color: white; border: 1px solid #555; }
+    button { background: #58b668; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; }
+    #result { margin-top: 10px; padding: 10px; border: 1px solid #58b668; background: #1e1e1e; white-space: pre-wrap; font-size: 13px; }
   </style>
 </head>
 <body>
-  <h3>Grist AI Bridge <button class="secondary" onclick="resetApiKey()" style="font-size: 10px;">Configurar API Key</button></h3>
-
-  <div class="section">
-    <label for="analysis-scope">¿Qué quieres analizar?</label>
-    <select id="analysis-scope">
-      <option value="selectedRow">Fila seleccionada</option>
-      <option value="specificColumn">Columna específica</option>
-      <option value="entireTable">Toda la tabla</option>
-    </select>
-    <div id="column-selector" style="display: none; margin-top: 10px;">
-      <label>Seleccionar columna:</label>
-      <select id="target-column"></select>
-    </div>
+  <div class="card">
+    <strong>Grist AI Bridge</strong> 
+    <button onclick="localStorage.removeItem('g_key'); alert('Key borrada')">Limpiar Key</button>
   </div>
 
-  <div class="section">
-    <label>Instrucción para la IA:</label>
-    <textarea id="user-prompt" rows="3" placeholder="Ej: Resume estos datos..."></textarea>
+  <div class="card">
+    <label>Instrucción:</label><br>
+    <textarea id="prompt" rows="2">Resume esta fila</textarea>
   </div>
 
-  <div class="section">
-    <button id="send-to-ia">Enviar a IA</button>
-    <div class="loading-spinner" id="spinner"></div>
-    <button id="clear-result" class="secondary">Limpiar</button>
-  </div>
+  <button id="run">Enviar a Gemini Pro</button>
 
-  <div class="section">
-    <div id="result-area">Esperando instrucciones...</div>
-  </div>
+  <div id="result">Esperando...</div>
 
   <script>
-    let currentTableId = null;
-
-    function getApiKey() {
-      let key = localStorage.getItem('gemini_api_key');
-      if (!key) {
-        key = prompt("Introduce tu API Key de Gemini (Google AI Studio):");
-        if (key) localStorage.setItem('gemini_api_key', key);
-      }
-      return key;
-    }
-
-    function resetApiKey() { localStorage.removeItem('gemini_api_key'); alert("Key borrada."); }
-
+    let tableId = "";
+    
+    // 1. Conexión con Grist
     grist.ready({
       requiredAccess: 'full',
-      onNewData: (data) => {
-        if (data && data.tableId) currentTableId = data.tableId;
-        if (data && data.colIds) {
-          const select = document.getElementById('target-column');
-          select.innerHTML = '';
-          data.colIds.forEach(id => {
-            const opt = document.createElement('option');
-            opt.value = id; opt.textContent = id;
-            select.appendChild(opt);
-          });
-        }
-      }
+      onNewData: (data) => { if(data.tableId) tableId = data.tableId; }
     });
 
-    document.getElementById('analysis-scope').onchange = (e) => {
-      document.getElementById('column-selector').style.display = e.target.value === 'specificColumn' ? 'block' : 'none';
-    };
-
-    async function collectData() {
-      const scope = document.getElementById('analysis-scope').value;
-      if (!currentTableId) currentTableId = await grist.selectedTable.getTableId();
-      if (scope === 'selectedRow') return await grist.fetchSelectedRecord();
-      const tableData = await grist.docApi.fetchTable(currentTableId);
-      if (scope === 'specificColumn') {
-        const colId = document.getElementById('target-column').value;
-        return { [colId]: tableData[colId] };
+    // 2. Función de envío
+    document.getElementById('run').onclick = async () => {
+      let key = localStorage.getItem('g_key');
+      if(!key) {
+        key = prompt("Pega tu API Key de Google AI Studio:");
+        if(key) localStorage.setItem('g_key', key);
       }
-      return tableData;
-    }
 
-    async function sendToIA(data, promptText) {
-      const key = getApiKey();
-      if (!key) return;
-      document.getElementById('spinner').style.display = 'inline-block';
+      document.getElementById('result').innerText = "Procesando...";
       
-      // CAMBIO CLAVE: Usamos gemini-3-flash-preview tal como encontraste
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`;
-
       try {
+        const row = await grist.fetchSelectedRecord();
+        // USAMOS EL MODELO MÁS ESTABLE: gemini-1.5-pro
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${key}`;
+        
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `Analiza estos datos de mi tabla Grist: ${JSON.stringify(data)}\n\nInstrucción: ${promptText}`
-              }]
-            }]
+            contents: [{ parts: [{ text: `Datos: ${JSON.stringify(row)}\n\nInstrucción: ${document.getElementById('prompt').value}` }] }]
           })
         });
 
         const json = await resp.json();
-        if (json.error) throw new Error(json.error.message);
-        
-        if (json.candidates && json.candidates[0].content) {
-          return json.candidates[0].content.parts[0].text;
-        } else {
-          return "La IA no devolvió respuesta. Revisa si el modelo 'gemini-3-flash-preview' está activo en tu región.";
-        }
-      } catch (e) { 
-        return "Error: " + e.message; 
-      } finally { 
-        document.getElementById('spinner').style.display = 'none'; 
+        if(json.error) throw new Error(json.error.message);
+        document.getElementById('result').innerText = json.candidates[0].content.parts[0].text;
+      } catch (e) {
+        document.getElementById('result').innerText = "Error: " + e.message;
       }
-    }
-
-    document.getElementById('send-to-ia').onclick = async () => {
-      const data = await collectData();
-      if (!data) return;
-      const result = await sendToIA(data, document.getElementById('user-prompt').value);
-      document.getElementById('result-area').textContent = result;
     };
-
-    document.getElementById('clear-result').onclick = () => { document.getElementById('result-area').textContent = 'Esperando...'; };
   </script>
 </body>
 </html>

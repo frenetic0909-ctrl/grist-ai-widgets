@@ -12,22 +12,13 @@
     color: #e5e7eb;
     padding: 12px;
   }
-
   .prompt {
     background: #020617;
     border: 1px solid #334155;
     border-radius: 6px;
     padding: 8px;
     min-height: 100px;
-    outline: none;
-    white-space: pre-wrap;
   }
-
-  .prompt:empty::before {
-    content: "Escribí acá qué querés analizar (duplicados, errores, inconsistencias...)";
-    color: #64748b;
-  }
-
   button {
     margin-top: 8px;
     padding: 8px 14px;
@@ -38,7 +29,6 @@
     cursor: pointer;
     font-weight: bold;
   }
-
   pre {
     background: #020617;
     border: 1px solid #334155;
@@ -48,14 +38,13 @@
     font-size: 12px;
     white-space: pre-wrap;
   }
-
   .error { color: #f87171; }
 </style>
 </head>
 
 <body>
 
-<h3>🤖 Auditor IA (modo conversacional)</h3>
+<h3>🤖 Auditor IA</h3>
 
 <div id="prompt" class="prompt" contenteditable="true"></div>
 
@@ -73,20 +62,50 @@ grist.on('configure', () => {
     settings: [{
       name: "tableId",
       label: "ID de la tabla a analizar",
-      type: "text",
-      placeholder: "ej: base_unica"
+      type: "text"
     }]
   });
 });
 
 grist.on('settings', (settings) => {
-  console.log("⚙️ Settings recibidos:", settings);
+  console.log("⚙️ Settings:", settings);
   tableId = settings?.tableId?.trim() || null;
 });
-</script>
 
+document.getElementById("analyze").onclick = async () => {
+  const out = document.getElementById("output");
+  const promptText = document.getElementById("prompt").innerText.trim();
+
+  if (!tableId) {
+    out.innerHTML = "<span class='error'>❌ Configurá el ID de la tabla.</span>";
+    return;
+  }
+
+  if (!promptText) {
+    out.innerHTML = "<span class='error'>❌ Escribí un prompt.</span>";
+    return;
+  }
+
+  try {
+    out.textContent = "⏳ Leyendo tabla…";
+
+    const table = await grist.docApi.fetchTable(tableId);
+
+    out.textContent =
+`✅ Tabla: ${tableId}
+Filas: ${table.records.length}
+
+🧠 Prompt:
+${promptText}
+
+👉 Lectura OK (listo para IA)`;
+
+  } catch (e) {
+    out.innerHTML = "<span class='error'>❌ " + e.message + "</span>";
+    console.error(e);
+  }
+};
+</script>
 
 </body>
 </html>
-
-

@@ -12,10 +12,7 @@
       color: #e0e0e0;
       margin: 15px;
     }
-    h3 {
-      color: #f5a623;
-      margin-bottom: 10px;
-    }
+    h3 { color: #f5a623; }
     textarea {
       width: 100%;
       background: #2b2b2b;
@@ -35,15 +32,8 @@
       cursor: pointer;
       font-weight: bold;
     }
-    button:disabled {
-      background: #777;
-      cursor: not-allowed;
-    }
-    #status {
-      margin-top: 8px;
-      font-size: 12px;
-      color: #aaa;
-    }
+    button:disabled { background: #777; }
+    #status { font-size: 12px; color: #aaa; margin-top: 6px; }
     #result {
       margin-top: 15px;
       background: #121212;
@@ -51,7 +41,6 @@
       border-radius: 6px;
       padding: 12px;
       white-space: pre-wrap;
-      font-size: 14px;
       line-height: 1.5;
     }
     .debug {
@@ -68,7 +57,7 @@
 
   <label>¿Qué querés analizar?</label>
   <textarea id="prompt" rows="3">
-Detectá inconsistencias, nombres duplicados y errores de escritura.
+Detectá inconsistencias, duplicados y errores de escritura.
   </textarea>
 
   <button id="analyzeBtn">Analizar tabla completa</button>
@@ -87,12 +76,12 @@ const debug = document.getElementById('debug');
 
 btn.onclick = async () => {
   btn.disabled = true;
-  status.textContent = "📊 Cargando tabla completa…";
+  status.textContent = "📊 Leyendo tabla…";
   result.textContent = "";
   debug.textContent = "";
 
   try {
-    // API Key
+    // API KEY
     let apiKey = localStorage.getItem("groq_api_key");
     if (!apiKey) {
       apiKey = prompt("Ingresá tu API Key de Groq (gsk_...)");
@@ -100,15 +89,19 @@ btn.onclick = async () => {
       localStorage.setItem("groq_api_key", apiKey);
     }
 
-    // Obtener TODA la tabla actual
-    const table = await grist.docApi.fetchTable(null);
+    // ✅ OBTENER TABLA CORRECTAMENTE
+    const tableId = await grist.getTableId();
+    if (!tableId) throw new Error("No se pudo obtener el tableId.");
 
-    if (!table || !table.records || table.records.length === 0) {
-      throw new Error("La tabla está vacía o no se pudo leer.");
+    const table = await grist.docApi.fetchTable(tableId);
+
+    if (!table.records || table.records.length === 0) {
+      throw new Error("La tabla está vacía.");
     }
 
     debug.textContent =
-      "DEBUG:\n" +
+      `DEBUG\n` +
+      `Tabla: ${tableId}\n` +
       `Filas: ${table.records.length}\n` +
       `Columnas: ${Object.keys(table.records[0]).join(", ")}`;
 
@@ -132,7 +125,7 @@ Analizás tablas completas.
 NO modifiques datos.
 Marcá errores con ⚠️.
 Indicá siempre FILA y COLUMNA.
-Modo mixto: explicación + lista completa de errores.
+Modo mixto: explicación + lista completa.
 `
           },
           {
@@ -141,7 +134,7 @@ Modo mixto: explicación + lista completa de errores.
 TABLA COMPLETA (JSON):
 ${JSON.stringify(table.records)}
 
-CONSULTA DEL USUARIO:
+CONSULTA:
 ${document.getElementById("prompt").value}
 `
           }

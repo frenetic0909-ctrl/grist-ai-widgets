@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Grist AI Bridge - Gemini Fix</title>
+  <title>Grist AI Bridge - Gemini 3</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <style>
     body { font-family: sans-serif; margin: 15px; background-color: #2e2e2e; color: #f0f0f0; }
@@ -21,20 +21,20 @@
   <h3>Grist AI Bridge <button class="secondary" onclick="resetApiKey()" style="font-size: 10px;">Configurar API Key</button></h3>
 
   <div class="section">
-    <label for="analysis-scope">Alcance:</label>
+    <label for="analysis-scope">¿Qué quieres analizar?</label>
     <select id="analysis-scope">
       <option value="selectedRow">Fila seleccionada</option>
       <option value="specificColumn">Columna específica</option>
       <option value="entireTable">Toda la tabla</option>
     </select>
     <div id="column-selector" style="display: none; margin-top: 10px;">
-      <label>Columna:</label>
+      <label>Seleccionar columna:</label>
       <select id="target-column"></select>
     </div>
   </div>
 
   <div class="section">
-    <label>Instrucción:</label>
+    <label>Instrucción para la IA:</label>
     <textarea id="user-prompt" rows="3" placeholder="Ej: Resume estos datos..."></textarea>
   </div>
 
@@ -50,7 +50,6 @@
 
   <script>
     let currentTableId = null;
-    let columnNames = [];
 
     function getApiKey() {
       let key = localStorage.getItem('gemini_api_key');
@@ -68,10 +67,9 @@
       onNewData: (data) => {
         if (data && data.tableId) currentTableId = data.tableId;
         if (data && data.colIds) {
-          columnNames = data.colIds;
           const select = document.getElementById('target-column');
           select.innerHTML = '';
-          columnNames.forEach(id => {
+          data.colIds.forEach(id => {
             const opt = document.createElement('option');
             opt.value = id; opt.textContent = id;
             select.appendChild(opt);
@@ -89,7 +87,10 @@
       if (!currentTableId) currentTableId = await grist.selectedTable.getTableId();
       if (scope === 'selectedRow') return await grist.fetchSelectedRecord();
       const tableData = await grist.docApi.fetchTable(currentTableId);
-      if (scope === 'specificColumn') return { [document.getElementById('target-column').value]: tableData[document.getElementById('target-column').value] };
+      if (scope === 'specificColumn') {
+        const colId = document.getElementById('target-column').value;
+        return { [colId]: tableData[colId] };
+      }
       return tableData;
     }
 
@@ -98,26 +99,41 @@
       if (!key) return;
       document.getElementById('spinner').style.display = 'inline-block';
       
-      // CAMBIO CLAVE: Usamos v1 y gemini-pro que es la ruta más estable
-      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${key}`;
+      // CAMBIO CLAVE: Usamos gemini-3-flash-preview tal como encontraste
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`;
 
       try {
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: `Datos: ${JSON.stringify(data)}\n\nInstrucción: ${promptText}` }] }]
+            contents: [{
+              parts: [{
+                text: `Analiza estos datos de mi tabla Grist: ${JSON.stringify(data)}\n\nInstrucción: ${promptText}`
+              }]
+            }]
           })
         });
+
         const json = await resp.json();
         if (json.error) throw new Error(json.error.message);
-        return json.candidates[0].content.parts[0].text;
-      } catch (e) { return "Error: " + e.message; }
-      finally { document.getElementById('spinner').style.display = 'none'; }
+        
+        if (json.candidates && json.candidates[0].content) {
+          return json.candidates[0].content.parts[0].text;
+        } else {
+          return "La IA no devolvió respuesta. Revisa si el modelo 'gemini-3-flash-preview' está activo en tu región.";
+        }
+      } catch (e) { 
+        return "Error: " + e.message; 
+      } finally { 
+        document.getElementById('spinner').style.display = 'none'; 
+      }
     }
 
     document.getElementById('send-to-ia').onclick = async () => {
-      const result = await sendToIA(await collectData(), document.getElementById('user-prompt').value);
+      const data = await collectData();
+      if (!data) return;
+      const result = await sendToIA(data, document.getElementById('user-prompt').value);
       document.getElementById('result-area').textContent = result;
     };
 

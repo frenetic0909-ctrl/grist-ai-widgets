@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Grist AI Bridge - Mapeo Estable</title>
+  <title>Grist IA Bridge - Mapeo Estable</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <style>
     body { font-family: sans-serif; margin: 15px; background-color: #1e1e1e; color: #e0e0e0; }
@@ -41,6 +41,7 @@
     .status { color: #888; font-size: 12px; margin-top: 5px; }
   </style>
 </head>
+
 <body>
   <h3>
     Grist IA Bridge (Groq)
@@ -49,7 +50,9 @@
   
   <div class="card">
     <label>Instrucción para la IA:</label><br><br>
-    <textarea id="prompt" rows="3">Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.</textarea>
+    <textarea id="prompt" rows="3">
+Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
+    </textarea>
   </div>
 
   <button id="btn">Enviar a Groq IA</button>
@@ -58,7 +61,7 @@
   <div id="result">El resultado aparecerá aquí...</div>
 
   <script>
-    // PASO 1: Declarar el mapeo "Analizar" para que Grist guarde los checks
+    // 🔹 Configuración inicial del widget
     grist.ready({
       requiredAccess: 'full',
       columns: [
@@ -78,28 +81,38 @@
       const status = document.getElementById('status-text');
       
       let key = localStorage.getItem('groq_api_key');
-      if(!key) {
+      if (!key) {
         key = prompt("Introduce tu API Key de Groq (gsk_...):");
-        if(key) localStorage.setItem('groq_api_key', key);
+        if (key) localStorage.setItem('groq_api_key', key);
         else return;
       }
 
-      status.innerText = "Conectando con Grist...";
       btn.disabled = true;
+      status.innerText = "Leyendo datos desde Grist...";
 
       try {
-        // Obtenemos el registro mapeado
+        // 🔹 Obtenemos la fila seleccionada
         const row = await grist.fetchSelectedRecord();
-        
-        // Priorizamos los datos mapeados en el rol "Analizar"
-        const cleanData = row.Analizar || row;
 
-        if (!cleanData || Object.keys(cleanData).length <= 1) { 
-          throw new Error("Mapea las columnas en la sección ANALIZAR a la derecha.");
+        if (!row || !row.Analizar || row.Analizar.length === 0) {
+          throw new Error("Seleccioná al menos una columna en la sección ANALIZAR.");
         }
+
+        // 🔹 Construimos el objeto real con datos
+        const cleanData = {};
+        for (const col of row.Analizar) {
+          cleanData[col] = row[col];
+        }
+
+        if (Object.keys(cleanData).length === 0) {
+          throw new Error("Las columnas seleccionadas no contienen datos.");
+        }
+
+        console.log("Datos enviados a IA:", cleanData);
 
         status.innerText = "Procesando con Groq IA...";
 
+        // 🔹 Llamada a Groq
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -110,20 +123,23 @@
             model: "llama-3.3-70b-versatile",
             messages: [
               { role: "system", content: "Eres un analista experto en datos." },
-              { role: "user", content: `Datos: ${JSON.stringify(cleanData)}\n\nInstrucción: ${document.getElementById('prompt').value}` }
+              { 
+                role: "user", 
+                content: `Datos:\n${JSON.stringify(cleanData, null, 2)}\n\nInstrucción:\n${document.getElementById('prompt').value}` 
+              }
             ],
             temperature: 0.5
           })
         });
 
         const json = await response.json();
-        if(json.error) throw new Error(json.error.message);
-        
+        if (json.error) throw new Error(json.error.message);
+
         res.innerText = json.choices[0].message.content;
         status.innerText = "Análisis completado.";
 
       } catch (e) {
-        res.innerText = "Error: " + e.message;
+        res.innerText = "❌ Error: " + e.message;
         status.innerText = "Error detectado.";
       } finally {
         btn.disabled = false;

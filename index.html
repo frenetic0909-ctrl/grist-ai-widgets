@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<title>Grist IA Auditor</title>
+<title>Grist IA Auditor - Manual ID</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 
 <style>
@@ -12,107 +12,111 @@
     color: #e5e7eb;
     padding: 12px;
   }
-  .prompt {
+  .prompt-container {
     background: #020617;
     border: 1px solid #334155;
     border-radius: 6px;
     padding: 8px;
-    min-height: 100px;
+    min-height: 80px;
     outline: none;
+    margin-bottom: 10px;
   }
   button {
-    margin-top: 8px;
-    padding: 8px 14px;
+    padding: 10px 16px;
     background: #f59e0b;
     color: #020617;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     font-weight: bold;
+    width: 100%;
   }
   button:hover { background: #d97706; }
   pre {
-    background: #020617;
+    background: #1e293b;
     border: 1px solid #334155;
     border-radius: 6px;
     padding: 10px;
-    margin-top: 10px;
-    font-size: 12px;
+    margin-top: 15px;
+    font-size: 13px;
     white-space: pre-wrap;
+    color: #38bdf8;
   }
-  .error { color: #f87171; }
+  .error { color: #f87171; font-weight: bold; }
+  .setup-info { font-size: 11px; color: #94a3b8; margin-top: 10px; text-align: center; }
 </style>
 </head>
 
 <body>
 
-<h3>🤖 Auditor IA</h3>
+<h3>🤖 Auditor IA (Modo Directo)</h3>
 
-<div id="prompt" class="prompt" contenteditable="true">Analiza si hay errores en esta tabla...</div>
+<div id="promptInput" class="prompt-container" contenteditable="true">Analiza si hay inconsistencias en los datos...</div>
 
-<button id="analyze">Analizar tabla</button>
+<button id="analyzeBtn">Analizar Tabla</button>
 
-<pre id="output">Esperando análisis…</pre>
+<pre id="output">Esperando acción...</pre>
+
+<div class="setup-info">Si el ID cambia, pulsa "Analizar" para reconfigurar.</div>
 
 <script>
 let tableId = null;
 
-// Solicitamos acceso completo para poder leer la tabla correctamente
+// Solicitamos acceso completo para poder ejecutar fetchTable
 grist.ready({ requiredAccess: 'full' });
 
-grist.on('configure', () => {
-  grist.customSectionAPI.configure({
-    settings: [{
-      name: "tableId",
-      label: "ID de la tabla a analizar (Ej: BASE_UNICA)",
-      type: "text"
-    }]
-  });
-});
-
+// Intentamos capturar el ID desde settings por si acaso aparece luego
 grist.on('settings', (settings) => {
-  tableId = settings?.tableId?.trim() || null;
+  if (settings && settings.tableId) {
+    tableId = settings.tableId.trim();
+  }
 });
 
-document.getElementById("analyze").onclick = async function() {
+document.getElementById("analyzeBtn").onclick = async function() {
   const out = document.getElementById("output");
-  const promptText = document.getElementById("prompt").innerText.trim();
+  const promptText = document.getElementById("promptInput").innerText.trim();
 
-  // Validaciones con lógica de salida limpia
+  // 1. Si no tenemos ID, lo pedimos manualmente
   if (!tableId) {
-    out.innerHTML = "<span class='error'>❌ Configurá el ID de la tabla en el panel de Ajustes.</span>";
-    return; 
+    const inputId = prompt("No se detectó el ID de la tabla. Por favor, ingresalo (ej: base_unica):");
+    if (inputId) {
+      tableId = inputId.trim();
+    } else {
+      out.innerHTML = "<span class='error'>❌ Error: Debes ingresar un ID de tabla.</span>";
+      return;
+    }
   }
 
   if (!promptText) {
-    out.innerHTML = "<span class='error'>❌ Escribí un prompt.</span>";
+    out.innerHTML = "<span class='error'>❌ Error: El prompt está vacío.</span>";
     return;
   }
 
   try {
-    out.textContent = "⏳ Leyendo tabla...";
+    out.textContent = "⏳ Intentando leer la tabla '" + tableId + "'...";
 
-    // Obtenemos los datos. Grist devuelve un objeto con columnas
+    // Llamada a la API de documentos de Grist
     const tableData = await grist.docApi.fetchTable(tableId);
     
-    // En Grist, el número de filas se sabe por el largo de cualquier columna (ej: 'id')
-    const numFilas = tableData.id ? tableData.id.length : 0;
+    // Calculamos el total de filas basándonos en la columna 'id'
+    const rowCount = tableData.id ? tableData.id.length : 0;
 
-    out.textContent = `✅ Conexión Exitosa
-Tabla detectada: ${tableId}
-Total de filas: ${numFilas}
+    out.textContent = `✅ ¡CONEXIÓN EXITOSA!
+-------------------------
+Tabla: ${tableId}
+Registros encontrados: ${rowCount}
 
-🧠 Tu instrucción:
+🧠 Instrucción recibida:
 "${promptText}"
 
-👉 Los datos están cargados en memoria. 
-(Siguiente paso: Conectar con Groq/Gemini usando estos datos).`;
+👉 Los datos ya están en memoria. Listo para enviar a la IA.`;
 
-    console.log("Datos de la tabla cargados:", tableData);
+    console.log("Datos cargados correctamente:", tableData);
 
   } catch (e) {
-    out.innerHTML = "<span class='error'>❌ Error: " + e.message + "</span>";
-    console.error("Fallo al leer tabla:", e);
+    out.innerHTML = `<span class='error'>❌ Error al leer la tabla:</span>\n${e.message}\n\n<small>Asegúrate de que el ID sea exacto y tengas "Acceso completo" en el panel derecho.</small>`;
+    // Reseteamos el ID para que el usuario pueda intentar escribirlo de nuevo si falló
+    tableId = null;
   }
 };
 </script>

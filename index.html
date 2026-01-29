@@ -1,114 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Grist IA Bridge - Estable</title>
+  <title>Grist IA Bridge - Informe Global</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 
   <style>
     body { font-family: sans-serif; margin: 15px; background-color: #1e1e1e; color: #e0e0e0; }
     h3 { color: #f5a623; display: flex; justify-content: space-between; align-items: center; }
     .card { background: #2b2b2b; padding: 15px; border-radius: 8px; border: 1px solid #444; margin-bottom: 15px; }
-    textarea { 
-      width: 95%; 
-      padding: 10px; 
-      background: #333; 
-      color: white; 
-      border: 1px solid #555; 
-      border-radius: 4px; 
-      resize: vertical;
-    }
-    button { 
-      background: #f5a623; 
-      color: black; 
-      border: none; 
-      padding: 12px 20px; 
-      border-radius: 4px; 
-      cursor: pointer; 
-      font-weight: bold; 
-    }
+    textarea { width: 95%; padding: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; resize: vertical; }
+    button { background: #f5a623; color: black; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
     button:disabled { background: #666; cursor: not-allowed; }
-    button.secondary { background: #444; color: white; font-size: 10px; padding: 5px; margin-left: 10px; }
-    #result { 
-      margin-top: 15px; 
-      padding: 15px; 
-      border-radius: 5px; 
-      background: #121212; 
-      border: 1px solid #f5a623; 
-      white-space: pre-wrap; 
-      min-height: 50px; 
-      font-size: 14px;
-      line-height: 1.5;
-    }
+    #result { margin-top: 15px; padding: 15px; border-radius: 5px; background: #121212; border: 1px solid #f5a623; white-space: pre-wrap; }
     .status { color: #888; font-size: 12px; margin-top: 5px; }
   </style>
 </head>
 
 <body>
-  <h3>
-    Grist IA Bridge (Groq)
-    <button class="secondary" onclick="resetKey()">Borrar API Key</button>
-  </h3>
+  <h3>Grist IA Bridge – Informe</h3>
 
   <div class="card">
     <label>Instrucción para la IA:</label><br><br>
-    <textarea id="prompt" rows="3">
-Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
+    <textarea id="prompt" rows="4">
+Analiza los datos proporcionados y genera un informe ejecutivo.
+Identifica patrones, inconsistencias y conclusiones relevantes.
     </textarea>
   </div>
 
-  <button id="btn">Enviar a Groq IA</button>
-  <div class="status" id="status-text">Listo para procesar.</div>
+  <button id="btn">Analizar filas seleccionadas</button>
+  <div class="status" id="status">Listo.</div>
 
-  <div id="result">El resultado aparecerá aquí...</div>
+  <div id="result">El informe aparecerá aquí…</div>
 
   <script>
-    // 🔹 Inicialización del widget
-    grist.ready({
-      requiredAccess: 'full',
-      columns: [
-        { name: "Analizar", optional: true, allowMultiple: true }
-      ]
-    });
-
-    function resetKey() {
-      localStorage.removeItem('groq_api_key');
-      alert("API Key borrada.");
-      location.reload();
-    }
+    grist.ready({ requiredAccess: 'full' });
 
     document.getElementById('btn').onclick = async () => {
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
       const btn = document.getElementById('btn');
-      const res = document.getElementById('result');
-      const status = document.getElementById('status-text');
 
       let key = localStorage.getItem('groq_api_key');
       if (!key) {
-        key = prompt("Introduce tu API Key de Groq (gsk_...):");
-        if (key) localStorage.setItem('groq_api_key', key);
-        else return;
+        key = prompt("API Key de Groq:");
+        if (!key) return;
+        localStorage.setItem('groq_api_key', key);
       }
 
       btn.disabled = true;
-      status.innerText = "Leyendo fila seleccionada desde Grist...";
+      status.innerText = "Leyendo filas seleccionadas…";
 
       try {
-        // 🔹 Traemos la fila seleccionada
-        const row = await grist.fetchSelectedRecord();
+        const rows = await grist.fetchSelectedRecords();
 
-        // 🔍 DEBUG CRÍTICO
-        console.log("📌 ROW COMPLETO:", row);
-        console.log("📌 ANALIZAR (valores mapeados):", row?.Analizar);
+        console.log("📌 FILAS CRUDAS:", rows);
 
-        if (!row || !row.Analizar || row.Analizar.length === 0) {
-          throw new Error("Seleccioná al menos una columna en la sección ANALIZAR.");
+        if (!rows || rows.length === 0) {
+          throw new Error("No hay filas seleccionadas.");
         }
 
-        // ✔️ Grist devuelve directamente LOS VALORES
-        const cleanData = row.Analizar;
+        const cleanedRows = rows.map(row => {
+          const obj = {};
+          for (const key in row) {
+            if (
+              key !== "id" &&
+              row[key] !== null &&
+              row[key] !== "" &&
+              row[key] !== undefined
+            ) {
+              obj[key] = row[key];
+            }
+          }
+          return obj;
+        });
 
-        console.log("✅ DATOS ENVIADOS A IA:", cleanData);
+        console.log("✅ FILAS LIMPIAS:", cleanedRows);
 
-        status.innerText = "Procesando con Groq IA...";
+        status.innerText = `Analizando ${cleanedRows.length} fila(s)…`;
 
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -119,32 +87,32 @@ Analiza esta fila y haz un resumen ejecutivo de los datos encontrados.
           body: JSON.stringify({
             model: "llama-3.3-70b-versatile",
             messages: [
-              { role: "system", content: "Eres un analista experto en datos." },
+              { role: "system", content: "Eres un analista experto en datos estructurados." },
               {
                 role: "user",
                 content: `
-Datos seleccionados:
-${JSON.stringify(cleanData, null, 2)}
+Datos (${cleanedRows.length} filas):
+${JSON.stringify(cleanedRows, null, 2)}
 
 Instrucción:
 ${document.getElementById('prompt').value}
                 `
               }
             ],
-            temperature: 0.5
+            temperature: 0.4
           })
         });
 
         const json = await response.json();
         if (json.error) throw new Error(json.error.message);
 
-        res.innerText = json.choices[0].message.content;
-        status.innerText = "Análisis completado correctamente.";
+        result.innerText = json.choices[0].message.content;
+        status.innerText = "Informe generado correctamente.";
 
-      } catch (e) {
-        console.error("❌ ERROR:", e);
-        res.innerText = "❌ Error: " + e.message;
-        status.innerText = "Error detectado.";
+      } catch (err) {
+        console.error(err);
+        result.innerText = "❌ Error: " + err.message;
+        status.innerText = "Error.";
       } finally {
         btn.disabled = false;
       }

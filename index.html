@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Grist AI Bridge - Groq Edition</title>
+  <title>Grist AI Bridge - Fixed Mapping</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <style>
     body { font-family: sans-serif; margin: 15px; background-color: #1e1e1e; color: #e0e0e0; }
@@ -10,54 +10,50 @@
     textarea { width: 95%; padding: 10px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; }
     button { background: #f5a623; color: black; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
     button:disabled { background: #666; cursor: not-allowed; }
-    button.secondary { background: #444; color: white; font-size: 10px; padding: 5px; }
     #result { margin-top: 15px; padding: 15px; border-radius: 5px; background: #121212; border: 1px solid #f5a623; white-space: pre-wrap; min-height: 50px; }
   </style>
 </head>
 <body>
-  <h3>Grist IA Bridge <button class="secondary" onclick="resetKey()">Borrar API Key</button></h3>
+  <h3>Grist IA Bridge <button onclick="localStorage.removeItem('groq_api_key'); location.reload();" style="font-size:10px; background:#444; color:white;">Reset Key</button></h3>
   
   <div class="card">
-    <label>Instrucción para la IA:</label><br><br>
-    <textarea id="prompt" rows="3">Analiza esta fila y haz un resumen breve.</textarea>
+    <label>Instrucción:</label><br><br>
+    <textarea id="prompt" rows="2">Analiza esta fila y resume los puntos clave.</textarea>
   </div>
 
   <button id="btn">Enviar a Groq IA</button>
-  <div id="result">Esperando...</div>
+  <div id="result">Esperando datos...</div>
 
   <script>
-    function resetKey() { localStorage.removeItem('groq_api_key'); alert("Key borrada."); location.reload(); }
-
-    // Inicializa la comunicación con Grist con acceso total
-    grist.ready({ requiredAccess: 'full' });
+    // PASO 1: Configurar columnas opcionales para evitar que se destilden
+    grist.ready({
+      requiredAccess: 'full',
+      columns: [ { name: "Datos", optional: true } ] 
+    });
 
     document.getElementById('btn').onclick = async () => {
       const btn = document.getElementById('btn');
       const res = document.getElementById('result');
       
-      // Manejo de la API Key
       let key = localStorage.getItem('groq_api_key');
       if(!key) {
-        key = prompt("Introduce tu API Key de Groq (consíguela en console.groq.com):");
+        key = prompt("Introduce tu API Key de Groq:");
         if(key) localStorage.setItem('groq_api_key', key);
         else return;
       }
 
-      res.innerText = "Procesando con Groq...";
+      res.innerText = "Procesando...";
       btn.disabled = true;
 
       try {
-        // Intenta obtener el registro de la fila seleccionada
+        // PASO 2: Obtener datos mapeados
         const row = await grist.fetchSelectedRecord();
         
-        // VALIDACIÓN: Verifica si la fila tiene datos o si no hay columnas seleccionadas
-        if (!row || Object.keys(row).length <= 1) { 
-          res.innerText = "Error: No hay datos disponibles para analizar. La fila está vacía ({}) o no has seleccionado columnas visibles en el panel derecho de Grist.";
-          btn.disabled = false;
-          return;
+        // Verificación de seguridad
+        if (!row || Object.keys(row).length <= 1) {
+          throw new Error("Sigue sin haber datos. Tilda las columnas en el panel derecho y selecciona una fila.");
         }
 
-        // Llamada a la API de Groq usando el modelo Llama 3.3
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -67,23 +63,18 @@
           body: JSON.stringify({
             model: "llama-3.3-70b-versatile",
             messages: [
-              { role: "system", content: "Eres un analista experto en datos para un proyecto de digitalización de planos de la provincia de Buenos Aires." },
-              { role: "user", content: `Datos de la fila: ${JSON.stringify(row)}\n\nInstrucción: ${document.getElementById('prompt').value}` }
+              { role: "system", content: "Eres un analista de datos experto." },
+              { role: "user", content: `Datos: ${JSON.stringify(row)}\n\nInstrucción: ${document.getElementById('prompt').value}` }
             ]
           })
         });
 
         const json = await response.json();
-        
         if(json.error) throw new Error(json.error.message);
-        
-        // Muestra el resultado final en el widget
         res.innerText = json.choices[0].message.content;
 
       } catch (e) {
         res.innerText = "Error: " + e.message;
-        // Si hay error de API Key, la borra para permitir reintentar
-        if(e.message.includes("API key")) localStorage.removeItem('groq_api_key');
       } finally {
         btn.disabled = false;
       }

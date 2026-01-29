@@ -45,14 +45,14 @@
   grist.ready();
 
   // 🔧 CONFIGURACIÓN DEL WIDGET
-  grist.on('configure', (config) => {
-    grist.customSectionAPI.configure({
-      settings: [
-        {
-          name: "tableId",
-          label: "ID de la tabla a analizar",
-          type: "text",
-          placeholder: "ej: base_unica"
+grist.on('configure', () => {
+  grist.customSectionAPI.configure({
+    settings: [
+      {
+        name: "tableId",
+        label: "ID de la tabla a analizar",
+        type: "text",
+        placeholder: "ej: base_unica"
         }
       ],
       onSave: (settings) => {
@@ -102,3 +102,4 @@
 
 </body>
 </html>
+

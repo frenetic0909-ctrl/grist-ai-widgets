@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<title>Grist IA – Auditor Conversacional</title>
+<title>Grist IA Auditor</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 
 <style>
@@ -12,17 +12,22 @@
     color: #e5e7eb;
     padding: 12px;
   }
-  textarea {
-    width: 100%;
-    min-height: 120px;
+
+  .prompt {
     background: #020617;
-    color: #e5e7eb;
     border: 1px solid #334155;
     border-radius: 6px;
     padding: 8px;
-    resize: vertical;
-    pointer-events: auto;
+    min-height: 100px;
+    outline: none;
+    white-space: pre-wrap;
   }
+
+  .prompt:empty::before {
+    content: "Escribí acá qué querés analizar (duplicados, errores, inconsistencias...)";
+    color: #64748b;
+  }
+
   button {
     margin-top: 8px;
     padding: 8px 14px;
@@ -33,33 +38,34 @@
     cursor: pointer;
     font-weight: bold;
   }
+
   pre {
     background: #020617;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 10px;
+    margin-top: 10px;
     font-size: 12px;
     white-space: pre-wrap;
-    border-radius: 6px;
-    border: 1px solid #334155;
-    margin-top: 10px;
   }
+
+  .error { color: #f87171; }
 </style>
 </head>
 
 <body>
 
-<h3>🧠 Auditor IA</h3>
+<h3>🤖 Auditor IA (modo conversacional)</h3>
 
-<label>Prompt de análisis (editable):</label>
-<textarea id="prompt" spellcheck="true"></textarea>
+<div id="prompt" class="prompt" contenteditable="true"></div>
 
-<button id="analyzeBtn">Analizar tabla</button>
+<button id="analyze">Analizar tabla</button>
 
-<pre id="result">Esperando análisis…</pre>
+<pre id="output">Esperando análisis…</pre>
 
 <script>
 let tableId = null;
 
-/* 🔴 CLAVE: readOnly evita que Grist secuestre el foco */
 grist.ready({ requiredAccess: 'readOnly' });
 
 /* CONFIG PANEL DERECHO */
@@ -67,7 +73,7 @@ grist.on('configure', () => {
   grist.customSectionAPI.configure({
     settings: [{
       name: "tableId",
-      label: "ID de la tabla",
+      label: "ID de la tabla a analizar",
       type: "text",
       placeholder: "ej: base_unica"
     }]
@@ -78,19 +84,45 @@ grist.on('settings', (s) => {
   tableId = s?.tableId || null;
 });
 
-/* 🔴 CLAVE: forzar foco */
-const prompt = document.getElementById("prompt");
-prompt.addEventListener("mousedown", e => e.stopPropagation());
-prompt.addEventListener("keydown", e => e.stopPropagation());
-setTimeout(() => prompt.focus(), 300);
+document.getElementById("analyze").onclick = async () => {
+  const out = document.getElementById("output");
+  const promptText = document.getElementById("prompt").innerText.trim();
 
-document.getElementById("analyzeBtn").onclick = async () => {
-  if (!prompt.value.trim()) {
-    alert("Escribí un prompt primero");
+  if (!promptText) {
+    out.innerHTML = "<span class='error'>❌ Escribí un prompt primero.</span>";
     return;
   }
-  document.getElementById("result").textContent =
-    "PROMPT ENVIADO:\n\n" + prompt.value;
+
+  if (!tableId) {
+    out.innerHTML = "<span class='error'>❌ Configurá el ID de la tabla.</span>";
+    return;
+  }
+
+  try {
+    out.textContent = "⏳ Leyendo tabla…";
+
+    const table = await grist.docApi.fetchTable(tableId);
+
+    if (!table?.records?.length) {
+      throw new Error("La tabla está vacía o no existe.");
+    }
+
+    out.textContent =
+`✅ Tabla: ${tableId}
+Filas: ${table.records.length}
+Columnas: ${Object.keys(table.records[0]).join(", ")}
+
+🧠 Prompt:
+${promptText}
+
+👉 Lista para análisis IA`;
+
+    // 🔜 acá va Groq / OpenAI
+
+  } catch (e) {
+    out.innerHTML = `<span class="error">❌ ${e.message}</span>`;
+    console.error(e);
+  }
 };
 </script>
 

@@ -18,6 +18,7 @@
     border-radius: 6px;
     padding: 8px;
     min-height: 100px;
+    outline: none;
   }
   button {
     margin-top: 8px;
@@ -29,6 +30,7 @@
     cursor: pointer;
     font-weight: bold;
   }
+  button:hover { background: #d97706; }
   pre {
     background: #020617;
     border: 1px solid #334155;
@@ -46,7 +48,7 @@
 
 <h3>🤖 Auditor IA</h3>
 
-<div id="prompt" class="prompt" contenteditable="true"></div>
+<div id="prompt" class="prompt" contenteditable="true">Analiza si hay errores en esta tabla...</div>
 
 <button id="analyze">Analizar tabla</button>
 
@@ -55,30 +57,31 @@
 <script>
 let tableId = null;
 
-grist.ready({ requiredAccess: 'read table' });
+// Solicitamos acceso completo para poder leer la tabla correctamente
+grist.ready({ requiredAccess: 'full' });
 
 grist.on('configure', () => {
   grist.customSectionAPI.configure({
     settings: [{
       name: "tableId",
-      label: "ID de la tabla a analizar",
+      label: "ID de la tabla a analizar (Ej: BASE_UNICA)",
       type: "text"
     }]
   });
 });
 
 grist.on('settings', (settings) => {
-  console.log("⚙️ Settings:", settings);
   tableId = settings?.tableId?.trim() || null;
 });
 
-document.getElementById("analyze").onclick = async () => {
+document.getElementById("analyze").onclick = async function() {
   const out = document.getElementById("output");
   const promptText = document.getElementById("prompt").innerText.trim();
 
+  // Validaciones con lógica de salida limpia
   if (!tableId) {
-    out.innerHTML = "<span class='error'>❌ Configurá el ID de la tabla.</span>";
-    return;
+    out.innerHTML = "<span class='error'>❌ Configurá el ID de la tabla en el panel de Ajustes.</span>";
+    return; 
   }
 
   if (!promptText) {
@@ -87,22 +90,29 @@ document.getElementById("analyze").onclick = async () => {
   }
 
   try {
-    out.textContent = "⏳ Leyendo tabla…";
+    out.textContent = "⏳ Leyendo tabla...";
 
-    const table = await grist.docApi.fetchTable(tableId);
+    // Obtenemos los datos. Grist devuelve un objeto con columnas
+    const tableData = await grist.docApi.fetchTable(tableId);
+    
+    // En Grist, el número de filas se sabe por el largo de cualquier columna (ej: 'id')
+    const numFilas = tableData.id ? tableData.id.length : 0;
 
-    out.textContent =
-`✅ Tabla: ${tableId}
-Filas: ${table.records.length}
+    out.textContent = `✅ Conexión Exitosa
+Tabla detectada: ${tableId}
+Total de filas: ${numFilas}
 
-🧠 Prompt:
-${promptText}
+🧠 Tu instrucción:
+"${promptText}"
 
-👉 Lectura OK (listo para IA)`;
+👉 Los datos están cargados en memoria. 
+(Siguiente paso: Conectar con Groq/Gemini usando estos datos).`;
+
+    console.log("Datos de la tabla cargados:", tableData);
 
   } catch (e) {
-    out.innerHTML = "<span class='error'>❌ " + e.message + "</span>";
-    console.error(e);
+    out.innerHTML = "<span class='error'>❌ Error: " + e.message + "</span>";
+    console.error("Fallo al leer tabla:", e);
   }
 };
 </script>

@@ -182,15 +182,15 @@
       }
     }
 
-    async function sendDataToAI(data, promptText) {
-  const apiKey = getApiKey(); // Aquí pondrás tu clave de Google AI Studio
+   async function sendDataToAI(data, promptText) {
+  const apiKey = getApiKey(); 
   if (!apiKey) return "Sin API Key.";
 
   document.getElementById('spinner').style.display = 'inline-block';
   document.getElementById('send-to-ia').disabled = true;
 
-  // Endpoint para Gemini 1.5 Pro o Flash
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // Cambiamos a la versión 'v1' y usamos gemini-1.5-flash-latest o gemini-pro
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   try {
     const response = await fetch(url, {
@@ -199,19 +199,33 @@
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `Eres un analista de datos. Analiza estos datos de Grist: ${JSON.stringify(data)}. Instrucción: ${promptText}`
+            text: `Eres un analista de datos experto. Analiza el siguiente JSON de Grist y responde a la instrucción del usuario de forma profesional.\n\nDatos: ${JSON.stringify(data)}\n\nInstrucción: ${promptText}`
           }]
         }]
       })
     });
 
     const json = await response.json();
-    if (json.error) throw new Error(json.error.message);
     
-    // Gemini devuelve la respuesta en esta estructura
-    return json.candidates[0].content.parts[0].text;
+    // Si Gemini devuelve un error de cuota o modelo, lo capturamos aquí
+    if (json.error) {
+      if (json.error.message.includes("API key not valid")) {
+        localStorage.removeItem('openai_api_key'); // Borramos para que pida la de Gemini
+        throw new Error("API Key de Gemini inválida. Por favor, configúrala de nuevo.");
+      }
+      throw new Error(json.error.message);
+    }
+    
+    // Validamos que existan candidatos en la respuesta
+    if (json.candidates && json.candidates[0].content && json.candidates[0].content.parts) {
+      return json.candidates[0].content.parts[0].text;
+    } else {
+      return "La IA no devolvió una respuesta válida. Revisa los datos enviados.";
+    }
+
   } catch (error) {
-    return `Error de Gemini: ${error.message}`;
+    console.error("Error de Gemini:", error);
+    return `Error: ${error.message}`;
   } finally {
     document.getElementById('spinner').style.display = 'none';
     document.getElementById('send-to-ia').disabled = false;
@@ -237,5 +251,6 @@
 </body>
 
 </html>
+
 
 

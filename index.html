@@ -1,51 +1,226 @@
-async function sendDataToAI(data, promptText) {
-  const apiKey = getApiKey(); 
-  if (!apiKey) return "Sin API Key.";
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Grist AI Bridge - Gemini Version</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 15px; background-color: #2e2e2e; color: #f0f0f0; }
+    h3 { color: #58b668; display: flex; justify-content: space-between; align-items: center; }
+    .section { margin-bottom: 20px; padding: 15px; border: 1px solid #444; border-radius: 5px; background-color: #3a3a3a; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    select, textarea {
+      width: calc(100% - 10px);
+      padding: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background-color: #4a4a4a;
+      color: #f0f0f0;
+    }
+    button {
+      background-color: #58b668;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover { background-color: #4aa05d; }
+    button.secondary { background-color: #666; }
+    #result-area {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid #58b668;
+      border-radius: 5px;
+      background-color: #2e2e2e;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .loading-spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top: 4px solid #58b668;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: none;
+      vertical-align: middle;
+      margin-left: 10px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h3>
+    Grist AI Bridge (Gemini)
+    <button class="secondary" onclick="resetApiKey()" style="font-size: 10px;">Configurar API Key</button>
+  </h3>
 
-  document.getElementById('spinner').style.display = 'inline-block';
-  document.getElementById('send-to-ia').disabled = true;
+  <div class="section">
+    <label for="analysis-scope">¿Qué quieres analizar?</label>
+    <select id="analysis-scope">
+      <option value="selectedRow">Fila seleccionada</option>
+      <option value="specificColumn">Columna específica</option>
+      <option value="entireTable">Toda la tabla (resumen general)</option>
+    </select>
 
-  // Cambiamos a v1beta que suele ser más flexible con los nombres de modelos flash
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    <div id="column-selector" style="display: none; margin-top: 10px;">
+      <label for="target-column">Seleccionar columna:</label>
+      <select id="target-column"></select>
+    </div>
+  </div>
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `Analiza estos datos de Grist:\n${JSON.stringify(data)}\n\nInstrucción: ${promptText}`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-        }
-      })
+  <div class="section">
+    <label for="user-prompt">Instrucciones para la IA:</label>
+    <textarea id="user-prompt" rows="4" placeholder="Ej: 'Resume estos datos', 'Busca errores en los códigos', 'Analiza la tendencia'..."></textarea>
+  </div>
+
+  <div class="section">
+    <button id="send-to-ia">Enviar a IA</button>
+    <div class="loading-spinner" id="spinner"></div>
+    <button id="clear-result" class="secondary">Limpiar</button>
+  </div>
+
+  <div class="section">
+    <label>Resultado de la IA:</label>
+    <div id="result-area">Esperando instrucciones...</div>
+  </div>
+
+  <script>
+    let currentTableId = null;
+    let columnNames = [];
+
+    // --- SEGURIDAD API KEY (Guardado local en el navegador) ---
+    function getApiKey() {
+      let key = localStorage.getItem('gemini_api_key');
+      if (!key) {
+        key = prompt("Introduce tu API Key de Google AI Studio (Gemini):");
+        if (key) localStorage.setItem('gemini_api_key', key);
+      }
+      return key;
+    }
+
+    function resetApiKey() {
+      localStorage.removeItem('gemini_api_key');
+      alert("API Key borrada. Se te pedirá la de Gemini en el próximo envío.");
+    }
+
+    // --- INTEGRACIÓN CON GRIST ---
+    grist.ready({
+      requiredAccess: 'full',
+      onNewData: (data) => {
+        if (data && data.tableId) currentTableId = data.tableId;
+        if (data && data.colIds) updateColumnDropdown(data.colIds);
+      }
     });
 
-    const json = await response.json();
-    
-    if (json.error) {
-      // Si el error es de modelo no encontrado, intentamos dar una pista
-      if (json.error.message.includes("not found")) {
-        throw new Error("El modelo Gemini 1.5 Flash no fue encontrado en esta región o versión de API.");
+    function updateColumnDropdown(cols) {
+      columnNames = cols;
+      const select = document.getElementById('target-column');
+      if (select) {
+        select.innerHTML = '';
+        cols.forEach(colId => {
+          const opt = document.createElement('option');
+          opt.value = colId;
+          opt.textContent = colId;
+          select.appendChild(opt);
+        });
       }
-      throw new Error(json.error.message);
-    }
-    
-    if (json.candidates && json.candidates[0].content) {
-      return json.candidates[0].content.parts[0].text;
-    } else {
-      return "La IA no pudo procesar los datos. Intenta con un prompt más específico.";
     }
 
-  } catch (error) {
-    console.error("Error de Gemini:", error);
-    return `Error: ${error.message}`;
-  } finally {
-    document.getElementById('spinner').style.display = 'none';
-    document.getElementById('send-to-ia').disabled = false;
-  }
-}
+    document.getElementById('analysis-scope').addEventListener('change', async (e) => {
+      const isCol = e.target.value === 'specificColumn';
+      document.getElementById('column-selector').style.display = isCol ? 'block' : 'none';
+      if (isCol && columnNames.length === 0) {
+        try {
+          const tableId = await grist.selectedTable.getTableId();
+          const tableData = await grist.docApi.fetchTable(tableId);
+          updateColumnDropdown(Object.keys(tableData));
+        } catch (err) { console.error("Error cargando columnas", err); }
+      }
+    });
+
+    // --- RECOLECCIÓN DE DATOS ---
+    async function collectDataForAI() {
+      const scope = document.getElementById('analysis-scope').value;
+      try {
+        if (!currentTableId) currentTableId = await grist.selectedTable.getTableId();
+
+        if (scope === 'selectedRow') {
+          return await grist.fetchSelectedRecord();
+        } else {
+          const tableData = await grist.docApi.fetchTable(currentTableId);
+          if (scope === 'specificColumn') {
+            const colId = document.getElementById('target-column').value;
+            return { [colId]: tableData[colId] };
+          }
+          return tableData;
+        }
+      } catch (err) {
+        alert("Error al obtener datos. Selecciona una fila en la tabla.");
+        return null;
+      }
+    }
+
+    // --- CONEXIÓN CON GEMINI API ---
+    async function sendDataToAI(data, promptText) {
+      const apiKey = getApiKey();
+      if (!apiKey) return "Operación cancelada.";
+
+      document.getElementById('spinner').style.display = 'inline-block';
+      document.getElementById('send-to-ia').disabled = true;
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `Analiza los siguientes datos extraídos de Grist y responde profesionalmente a la instrucción.\n\nDatos:\n${JSON.stringify(data)}\n\nInstrucción: ${promptText}`
+              }]
+            }]
+          })
+        });
+
+        const json = await response.json();
+        if (json.error) throw new Error(json.error.message);
+        
+        if (json.candidates && json.candidates[0].content) {
+          return json.candidates[0].content.parts[0].text;
+        } else {
+          return "La IA no pudo procesar la solicitud. Revisa el prompt.";
+        }
+      } catch (error) {
+        return `Error: ${error.message}`;
+      } finally {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('send-to-ia').disabled = false;
+      }
+    }
+
+    // --- BOTONES ---
+    document.getElementById('send-to-ia').addEventListener('click', async () => {
+      const promptText = document.getElementById('user-prompt').value;
+      if (!promptText.trim()) return alert("Escribe qué debe hacer la IA.");
+      
+      const data = await collectDataForAI();
+      if (!data) return;
+
+      const result = await sendDataToAI(data, promptText);
+      document.getElementById('result-area').textContent = result;
+    });
+
+    document.getElementById('clear-result').addEventListener('click', () => {
+      document.getElementById('result-area').textContent = 'Esperando instrucciones...';
+      document.getElementById('user-prompt').value = '';
+    });
+  </script>
+</body>
+</html>

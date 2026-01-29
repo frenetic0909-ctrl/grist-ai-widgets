@@ -98,7 +98,7 @@
     function getApiKey() {
       let key = localStorage.getItem('openai_api_key');
       if (!key) {
-        key = prompt("Introduce tu OpenAI API Key (se guardará solo en este navegador):");
+        key = prompt("Introduce tu OpenAI API Key:");
         if (key) localStorage.setItem('openai_api_key', key);
       }
       return key;
@@ -106,24 +106,27 @@
 
     function resetApiKey() {
       localStorage.removeItem('openai_api_key');
-      alert("API Key borrada. Se te pedirá una nueva en el próximo envío.");
+      alert("API Key borrada.");
     }
 
     // --- INTEGRACIÓN CON GRIST ---
     grist.ready({
       requiredAccess: 'full',
       onNewData: (data) => {
-        currentTableId = data.tableId;
-        columnNames = data.colIds;
-
-        const targetColumnSelect = document.getElementById('target-column');
-        targetColumnSelect.innerHTML = '';
-        columnNames.forEach(colId => {
-          const option = document.createElement('option');
-          option.value = colId;
-          option.textContent = colId;
-          targetColumnSelect.appendChild(option);
-        });
+        // Corrección para evitar el error de clonación: extraemos solo lo necesario
+        if (data && data.colIds) {
+          columnNames = data.colIds;
+          const targetColumnSelect = document.getElementById('target-column');
+          if (targetColumnSelect) {
+            targetColumnSelect.innerHTML = '';
+            columnNames.forEach(colId => {
+              const option = document.createElement('option');
+              option.value = colId;
+              option.textContent = colId;
+              targetColumnSelect.appendChild(option);
+            });
+          }
+        }
       }
     });
 
@@ -131,26 +134,32 @@
       document.getElementById('column-selector').style.display = e.target.value === 'specificColumn' ? 'block' : 'none';
     });
 
+    // --- FUNCIÓN DE RECOLECCIÓN CORREGIDA ---
     async function collectDataForAI() {
       const scope = document.getElementById('analysis-scope').value;
-      if (scope === 'selectedRow') {
-        const row = await grist.fetchSelectedRow();
-        return (row && row.id !== 0) ? row : (alert("Selecciona una fila."), null);
-      } else if (scope === 'specificColumn') {
-        const colId = document.getElementById('target-column').value;
-        const data = await grist.fetchColumn(colId);
-        return { [colId]: data.filter(v => v != null) };
-      } else {
-        const tableData = await grist.fetchTable();
-        return tableData.map(row => {
-          let obj = {};
-          columnNames.forEach((col, i) => obj[col] = row[i]);
-          return obj;
-        });
+      
+      try {
+        if (scope === 'selectedRow') {
+          const row = await grist.fetchSelectedRecord(); // Usamos fetchSelectedRecord en lugar de fetchSelectedRow
+          return row;
+        } else if (scope === 'specificColumn') {
+          const colId = document.getElementById('target-column').value;
+          // En lugar de fetchColumn, usamos docApi para mayor compatibilidad
+          const tableData = await grist.docApi.fetchTable(currentTableId || ''); 
+          return tableData[colId];
+        } else {
+          // Para "Toda la tabla", usamos docApi que es más universal
+          const tableData = await grist.docApi.fetchTable(currentTableId || '');
+          return tableData;
+        }
+      } catch (err) {
+        console.error("Error recolectando datos:", err);
+        alert("Error al obtener datos de la tabla. Revisa la consola.");
+        return null;
       }
     }
 
-    // --- CONEXIÓN REAL CON OPENAI ---
+    // --- CONEXIÓN CON OPENAI ---
     async function sendDataToAI(data, prompt) {
       const apiKey = getApiKey();
       if (!apiKey) return "Operación cancelada: No hay API Key.";
@@ -168,7 +177,7 @@
           body: JSON.stringify({
             model: "gpt-4o", 
             messages: [
-              { role: "system", content: "Eres un analista experto. Analizas datos de Grist y respondes de forma clara." },
+              { role: "system", content: "Eres un analista experto en datos de Grist." },
               { role: "user", content: `Datos: ${JSON.stringify(data)}\n\nInstrucción: ${prompt}` }
             ]
           })
@@ -176,10 +185,8 @@
 
         const json = await response.json();
         if (json.error) throw new Error(json.error.message);
-        
         return json.choices[0].message.content;
       } catch (error) {
-        if (error.message.includes("401")) localStorage.removeItem('openai_api_key');
         return `Error: ${error.message}`;
       } finally {
         document.getElementById('spinner').style.display = 'none';
@@ -188,13 +195,13 @@
     }
 
     document.getElementById('send-to-ia').addEventListener('click', async () => {
-      const prompt = document.getElementById('user-prompt').value;
-      if (!prompt.trim()) return alert("Escribe una instrucción.");
+      const promptText = document.getElementById('user-prompt').value;
+      if (!promptText.trim()) return alert("Escribe una instrucción.");
 
       const data = await collectDataForAI();
       if (!data) return;
 
-      const result = await sendDataToAI(data, prompt);
+      const result = await sendDataToAI(data, promptText);
       document.getElementById('result-area').textContent = result;
     });
 
@@ -204,4 +211,5 @@
     });
   </script>
 </body>
+
 </html>

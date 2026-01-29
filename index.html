@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Grist AI Bridge - Seguro</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 15px; background-color: #2e2e2e; color: #f0f0f0; }
+    h3 { color: #58b668; display: flex; justify-content: space-between; align-items: center; }
+    .section { margin-bottom: 20px; padding: 15px; border: 1px solid #444; border-radius: 5px; background-color: #3a3a3a; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    select, textarea, input[type="text"] {
+      width: calc(100% - 10px);
+      padding: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background-color: #4a4a4a;
+      color: #f0f0f0;
+    }
+    button {
+      background-color: #58b668;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover { background-color: #4aa05d; }
+    button.secondary { background-color: #666; }
+    #result-area {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid #58b668;
+      border-radius: 5px;
+      background-color: #2e2e2e;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .loading-spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top: 4px solid #58b668;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: none;
+      vertical-align: middle;
+      margin-left: 10px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h3>
+    Grist AI Bridge 
+    <button class="secondary" onclick="resetApiKey()" style="font-size: 10px;">Configurar API Key</button>
+  </h3>
+
+  <div class="section">
+    <label for="analysis-scope">¿Qué quieres analizar?</label>
+    <select id="analysis-scope">
+      <option value="selectedRow">Fila seleccionada</option>
+      <option value="specificColumn">Columna específica</option>
+      <option value="entireTable">Toda la tabla (resumen general)</option>
+    </select>
+
+    <div id="column-selector" style="display: none; margin-top: 10px;">
+      <label for="target-column">Seleccionar columna:</label>
+      <select id="target-column"></select>
+    </div>
+  </div>
+
+  <div class="section">
+    <label for="user-prompt">Instrucciones para la IA:</label>
+    <textarea id="user-prompt" rows="4" placeholder="Ej: 'Resume estos datos', 'Busca errores', 'Traduce la columna'..."></textarea>
+  </div>
+
+  <div class="section">
+    <button id="send-to-ia">Enviar a IA</button>
+    <div class="loading-spinner" id="spinner"></div>
+    <button id="clear-result" class="secondary">Limpiar</button>
+  </div>
+
+  <div class="section">
+    <label>Resultado de la IA:</label>
+    <div id="result-area">Esperando instrucciones...</div>
+  </div>
+
+  <script>
+    let currentTableId = null;
+    let columnNames = [];
+
+    // --- LÓGICA DE SEGURIDAD PARA API KEY ---
+    function getApiKey() {
+      let key = localStorage.getItem('openai_api_key');
+      if (!key) {
+        key = prompt("Introduce tu OpenAI API Key (se guardará solo en este navegador):");
+        if (key) localStorage.setItem('openai_api_key', key);
+      }
+      return key;
+    }
+
+    function resetApiKey() {
+      localStorage.removeItem('openai_api_key');
+      alert("API Key borrada. Se te pedirá una nueva en el próximo envío.");
+    }
+
+    // --- INTEGRACIÓN CON GRIST ---
+    grist.ready({
+      requiredAccess: 'full',
+      onNewData: (data) => {
+        currentTableId = data.tableId;
+        columnNames = data.colIds;
+
+        const targetColumnSelect = document.getElementById('target-column');
+        targetColumnSelect.innerHTML = '';
+        columnNames.forEach(colId => {
+          const option = document.createElement('option');
+          option.value = colId;
+          option.textContent = colId;
+          targetColumnSelect.appendChild(option);
+        });
+      }
+    });
+
+    document.getElementById('analysis-scope').addEventListener('change', (e) => {
+      document.getElementById('column-selector').style.display = e.target.value === 'specificColumn' ? 'block' : 'none';
+    });
+
+    async function collectDataForAI() {
+      const scope = document.getElementById('analysis-scope').value;
+      if (scope === 'selectedRow') {
+        const row = await grist.fetchSelectedRow();
+        return (row && row.id !== 0) ? row : (alert("Selecciona una fila."), null);
+      } else if (scope === 'specificColumn') {
+        const colId = document.getElementById('target-column').value;
+        const data = await grist.fetchColumn(colId);
+        return { [colId]: data.filter(v => v != null) };
+      } else {
+        const tableData = await grist.fetchTable();
+        return tableData.map(row => {
+          let obj = {};
+          columnNames.forEach((col, i) => obj[col] = row[i]);
+          return obj;
+        });
+      }
+    }
+
+    // --- CONEXIÓN REAL CON OPENAI ---
+    async function sendDataToAI(data, prompt) {
+      const apiKey = getApiKey();
+      if (!apiKey) return "Operación cancelada: No hay API Key.";
+
+      document.getElementById('spinner').style.display = 'inline-block';
+      document.getElementById('send-to-ia').disabled = true;
+
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: "gpt-4o", 
+            messages: [
+              { role: "system", content: "Eres un analista experto. Analizas datos de Grist y respondes de forma clara." },
+              { role: "user", content: `Datos: ${JSON.stringify(data)}\n\nInstrucción: ${prompt}` }
+            ]
+          })
+        });
+
+        const json = await response.json();
+        if (json.error) throw new Error(json.error.message);
+        
+        return json.choices[0].message.content;
+      } catch (error) {
+        if (error.message.includes("401")) localStorage.removeItem('openai_api_key');
+        return `Error: ${error.message}`;
+      } finally {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('send-to-ia').disabled = false;
+      }
+    }
+
+    document.getElementById('send-to-ia').addEventListener('click', async () => {
+      const prompt = document.getElementById('user-prompt').value;
+      if (!prompt.trim()) return alert("Escribe una instrucción.");
+
+      const data = await collectDataForAI();
+      if (!data) return;
+
+      const result = await sendDataToAI(data, prompt);
+      document.getElementById('result-area').textContent = result;
+    });
+
+    document.getElementById('clear-result').addEventListener('click', () => {
+      document.getElementById('result-area').textContent = 'Esperando instrucciones...';
+      document.getElementById('user-prompt').value = '';
+    });
+  </script>
+</body>
+</html>

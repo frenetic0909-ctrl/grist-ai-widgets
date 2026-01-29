@@ -18,14 +18,14 @@
   
   <div class="card">
     <label>Instrucción:</label><br><br>
-    <textarea id="prompt" rows="2">Analiza los datos de esta fila y haz un resumen ejecutivo.</textarea>
+    <textarea id="prompt" rows="2">Analiza los datos de esta fila y haz un resumen ejecutivo detallado.</textarea>
   </div>
 
   <button id="btn">Enviar a Groq IA</button>
-  <div id="result">Esperando selección de columnas...</div>
+  <div id="result">Esperando datos...</div>
 
   <script>
-    // PASO 1: Declaramos columnas opcionales. Esto evita que Grist las destilde
+    // PASO 1: Declarar el mapeo. Esto "obliga" a Grist a guardar tus checks
     grist.ready({
       requiredAccess: 'full',
       columns: [
@@ -44,16 +44,16 @@
         else return;
       }
 
-      res.innerText = "Procesando...";
+      res.innerText = "Procesando con Groq...";
       btn.disabled = true;
 
       try {
-        // PASO 2: Intentamos obtener el registro con los mapeos actuales
+        // PASO 2: Obtener el registro mapeado
         const row = await grist.fetchSelectedRecord();
         
-        // Verificamos si realmente hay datos
+        // Verificación de datos
         if (!row || Object.keys(row).length <= 1) {
-          throw new Error("No hay datos. Tilda las columnas en el panel derecho y asegúrate de marcar 'Analizar' si aparece.");
+          throw new Error("No hay datos. Asegúrate de tildar las columnas bajo el rol 'Analizar' en el panel derecho.");
         }
 
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {

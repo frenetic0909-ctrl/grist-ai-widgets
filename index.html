@@ -94,7 +94,7 @@
     let currentTableId = null;
     let columnNames = [];
 
-    // --- LÓGICA DE SEGURIDAD PARA API KEY ---
+    // --- SEGURIDAD API KEY ---
     function getApiKey() {
       let key = localStorage.getItem('openai_api_key');
       if (!key) {
@@ -113,56 +113,78 @@
     grist.ready({
       requiredAccess: 'full',
       onNewData: (data) => {
-        // Corrección para evitar el error de clonación: extraemos solo lo necesario
+        // Guardamos el tableId si viene en el paquete de datos
+        if (data && data.tableId) {
+          currentTableId = data.tableId;
+        }
+        
+        // Intentamos obtener columnas de los datos actuales
         if (data && data.colIds) {
-          columnNames = data.colIds;
-          const targetColumnSelect = document.getElementById('target-column');
-          if (targetColumnSelect) {
-            targetColumnSelect.innerHTML = '';
-            columnNames.forEach(colId => {
-              const option = document.createElement('option');
-              option.value = colId;
-              option.textContent = colId;
-              targetColumnSelect.appendChild(option);
-            });
-          }
+          updateColumnDropdown(data.colIds);
         }
       }
     });
 
-    document.getElementById('analysis-scope').addEventListener('change', (e) => {
-      document.getElementById('column-selector').style.display = e.target.value === 'specificColumn' ? 'block' : 'none';
+    function updateColumnDropdown(cols) {
+      columnNames = cols;
+      const select = document.getElementById('target-column');
+      if (select) {
+        select.innerHTML = '';
+        cols.forEach(colId => {
+          const opt = document.createElement('option');
+          opt.value = colId;
+          opt.textContent = colId;
+          select.appendChild(opt);
+        });
+      }
+    }
+
+    // Manejo visual del selector
+    document.getElementById('analysis-scope').addEventListener('change', async (e) => {
+      const isCol = e.target.value === 'specificColumn';
+      document.getElementById('column-selector').style.display = isCol ? 'block' : 'none';
+      
+      // Si el usuario elige columna y el dropdown está vacío, intentamos forzar la carga
+      if (isCol && columnNames.length === 0) {
+        try {
+          const tableId = await grist.selectedTable.getTableId();
+          currentTableId = tableId;
+          const tableData = await grist.docApi.fetchTable(tableId);
+          updateColumnDropdown(Object.keys(tableData));
+        } catch (err) {
+          console.error("No se pudo auto-cargar columnas:", err);
+        }
+      }
     });
 
-    // --- FUNCIÓN DE RECOLECCIÓN CORREGIDA ---
     async function collectDataForAI() {
       const scope = document.getElementById('analysis-scope').value;
-      
       try {
+        // Aseguramos tener el tableId antes de pedir datos
+        if (!currentTableId) {
+          currentTableId = await grist.selectedTable.getTableId();
+        }
+
         if (scope === 'selectedRow') {
-          const row = await grist.fetchSelectedRecord(); // Usamos fetchSelectedRecord en lugar de fetchSelectedRow
-          return row;
-        } else if (scope === 'specificColumn') {
-          const colId = document.getElementById('target-column').value;
-          // En lugar de fetchColumn, usamos docApi para mayor compatibilidad
-          const tableData = await grist.docApi.fetchTable(currentTableId || ''); 
-          return tableData[colId];
+          return await grist.fetchSelectedRecord();
         } else {
-          // Para "Toda la tabla", usamos docApi que es más universal
-          const tableData = await grist.docApi.fetchTable(currentTableId || '');
-          return tableData;
+          const tableData = await grist.docApi.fetchTable(currentTableId);
+          if (scope === 'specificColumn') {
+            const colId = document.getElementById('target-column').value;
+            return { [colId]: tableData[colId] };
+          }
+          return tableData; // Toda la tabla
         }
       } catch (err) {
-        console.error("Error recolectando datos:", err);
-        alert("Error al obtener datos de la tabla. Revisa la consola.");
+        console.error("Error en recolección:", err);
+        alert("Error al obtener datos. Asegúrate de tener una fila seleccionada.");
         return null;
       }
     }
 
-    // --- CONEXIÓN CON OPENAI ---
-    async function sendDataToAI(data, prompt) {
+    async function sendDataToAI(data, promptText) {
       const apiKey = getApiKey();
-      if (!apiKey) return "Operación cancelada: No hay API Key.";
+      if (!apiKey) return "Sin API Key.";
 
       document.getElementById('spinner').style.display = 'inline-block';
       document.getElementById('send-to-ia').disabled = true;
@@ -177,12 +199,11 @@
           body: JSON.stringify({
             model: "gpt-4o", 
             messages: [
-              { role: "system", content: "Eres un analista experto en datos de Grist." },
-              { role: "user", content: `Datos: ${JSON.stringify(data)}\n\nInstrucción: ${prompt}` }
+              { role: "system", content: "Analista de datos experto." },
+              { role: "user", content: `Datos: ${JSON.stringify(data)}\n\nInstrucción: ${promptText}` }
             ]
           })
         });
-
         const json = await response.json();
         if (json.error) throw new Error(json.error.message);
         return json.choices[0].message.content;
@@ -197,7 +218,7 @@
     document.getElementById('send-to-ia').addEventListener('click', async () => {
       const promptText = document.getElementById('user-prompt').value;
       if (!promptText.trim()) return alert("Escribe una instrucción.");
-
+      
       const data = await collectDataForAI();
       if (!data) return;
 
@@ -213,3 +234,4 @@
 </body>
 
 </html>
+

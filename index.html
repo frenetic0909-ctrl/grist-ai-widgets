@@ -1,52 +1,14 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8" />
-<title>Grist IA Auditor - Full Table</title>
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-
-<style>
-  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e5e7eb; padding: 12px; }
-  .prompt-container {
-    background: #020617; border: 1px solid #334155; border-radius: 6px;
-    padding: 8px; min-height: 60px; outline: none; margin-bottom: 10px;
-  }
-  button {
-    padding: 12px; border: none; border-radius: 6px; cursor: pointer;
-    font-weight: bold; width: 100%; background: #f59e0b; color: #020617;
-  }
-  button:disabled { background: #475569; cursor: not-allowed; }
-  pre {
-    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
-    padding: 12px; margin-top: 15px; font-size: 13px; white-space: pre-wrap; color: #38bdf8;
-  }
-  .status { font-size: 11px; color: #94a3b8; margin-top: 5px; text-align: center; }
-</style>
-</head>
-
-<body>
-
-<h3>📊 Auditor de Plantilla: base_unica</h3>
-
-<div id="promptInput" class="prompt-container" contenteditable="true">Analiza si hay errores, duplicados o datos faltantes en esta tabla.</div>
-
-<button id="analyzeBtn">Analizar Plantilla Completa</button>
-<div id="status" class="status">Listo para escanear base_unica</div>
-
-<pre id="output">Los resultados de la IA aparecerán aquí...</pre>
-
 <script>
-const tableId = "base_unica"; // ID hardcodeado
+// ID técnico real detectado en tu vista de código
+const tableId = "Base_unica"; 
 
 grist.ready({ requiredAccess: 'full' });
 
 document.getElementById("analyzeBtn").onclick = async function() {
   const btn = this;
   const out = document.getElementById("output");
-  const status = document.getElementById("status");
   const promptText = document.getElementById("promptInput").innerText.trim();
 
-  // Gestión de API Key
   let apiKey = localStorage.getItem('groq_api_key');
   if (!apiKey) {
     apiKey = prompt("Introduce tu API Key de Groq (gsk_...):");
@@ -55,16 +17,15 @@ document.getElementById("analyzeBtn").onclick = async function() {
   }
 
   btn.disabled = true;
-  out.textContent = "⏳ Cargando datos de la tabla...";
+  out.textContent = "⏳ Accediendo a la tabla '" + tableId + "'...";
 
   try {
-    // 1. Descargamos toda la tabla
+    // Ahora Grist encontrará la tabla correctamente al usar el nombre exacto de la clase
     const tableData = await grist.docApi.fetchTable(tableId);
     const rowCount = tableData.id ? tableData.id.length : 0;
     
-    status.innerText = `📦 Datos cargados (${rowCount} filas). Enviando a IA...`;
+    out.textContent = `✅ ¡Tabla encontrada!\nRegistros: ${rowCount}\nEnviando a Groq para análisis...`;
 
-    // 2. Enviamos a Groq
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -74,33 +35,20 @@ document.getElementById("analyzeBtn").onclick = async function() {
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         messages: [
-          { 
-            role: "system", 
-            content: "Eres un auditor de datos experto. Recibirás una tabla completa en formato JSON. Tu objetivo es encontrar inconsistencias, errores de formato o datos inusuales." 
-          },
-          { 
-            role: "user", 
-            content: `Instrucción: ${promptText}\n\nDatos de la tabla:\n${JSON.stringify(tableData)}` 
-          }
+          { role: "system", content: "Eres un analista de datos experto." },
+          { role: "user", content: `Instrucción: ${promptText}\n\nDatos:\n${JSON.stringify(tableData)}` }
         ]
       })
     });
 
     const json = await response.json();
     if (json.error) throw new Error(json.error.message);
-
     out.textContent = json.choices[0].message.content;
-    status.innerText = "✅ Análisis finalizado.";
 
   } catch (e) {
-    out.innerHTML = `<span style="color: #f87171">❌ Error: ${e.message}</span>`;
-    status.innerText = "Error en el proceso.";
-    if (e.message.includes("API key")) localStorage.removeItem('groq_api_key');
+    out.innerHTML = `<span style="color: #f87171">❌ Error: ${e.message}</span><br><small>Verificá que el widget tenga "Acceso completo" en el panel derecho.</small>`;
   } finally {
     btn.disabled = false;
   }
 };
 </script>
-
-</body>
-</html>

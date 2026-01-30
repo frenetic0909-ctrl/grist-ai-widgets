@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<title>Grist IA Auditor - Manual ID</title>
+<title>Grist IA Auditor - Fixed ID</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 
 <style>
@@ -49,43 +49,24 @@
 
 <body>
 
-<h3>🤖 Auditor IA (Modo Directo)</h3>
+<h3>🤖 Auditor IA</h3>
 
-<div id="promptInput" class="prompt-container" contenteditable="true">Analiza si hay inconsistencias en los datos...</div>
+<div id="promptInput" class="prompt-container" contenteditable="true">Analiza si hay inconsistencias en los datos de la tabla...</div>
 
-<button id="analyzeBtn">Analizar Tabla</button>
+<button id="analyzeBtn">Analizar Tabla base_unica</button>
 
-<pre id="output">Esperando acción...</pre>
-
-<div class="setup-info">Si el ID cambia, pulsa "Analizar" para reconfigurar.</div>
+<pre id="output">Listo para analizar la tabla: base_unica</pre>
 
 <script>
-let tableId = null;
+// HARDCODED: Definimos el ID de la tabla directamente aquí
+const tableId = "base_unica"; 
 
 // Solicitamos acceso completo para poder ejecutar fetchTable
 grist.ready({ requiredAccess: 'full' });
 
-// Intentamos capturar el ID desde settings por si acaso aparece luego
-grist.on('settings', (settings) => {
-  if (settings && settings.tableId) {
-    tableId = settings.tableId.trim();
-  }
-});
-
 document.getElementById("analyzeBtn").onclick = async function() {
   const out = document.getElementById("output");
   const promptText = document.getElementById("promptInput").innerText.trim();
-
-  // 1. Si no tenemos ID, lo pedimos manualmente
-  if (!tableId) {
-    const inputId = prompt("No se detectó el ID de la tabla. Por favor, ingresalo (ej: base_unica):");
-    if (inputId) {
-      tableId = inputId.trim();
-    } else {
-      out.innerHTML = "<span class='error'>❌ Error: Debes ingresar un ID de tabla.</span>";
-      return;
-    }
-  }
 
   if (!promptText) {
     out.innerHTML = "<span class='error'>❌ Error: El prompt está vacío.</span>";
@@ -93,9 +74,9 @@ document.getElementById("analyzeBtn").onclick = async function() {
   }
 
   try {
-    out.textContent = "⏳ Intentando leer la tabla '" + tableId + "'...";
+    out.textContent = "⏳ Leyendo tabla '" + tableId + "'...";
 
-    // Llamada a la API de documentos de Grist
+    // Llamada directa usando el ID hardcodeado
     const tableData = await grist.docApi.fetchTable(tableId);
     
     // Calculamos el total de filas basándonos en la columna 'id'
@@ -103,20 +84,18 @@ document.getElementById("analyzeBtn").onclick = async function() {
 
     out.textContent = `✅ ¡CONEXIÓN EXITOSA!
 -------------------------
-Tabla: ${tableId}
-Registros encontrados: ${rowCount}
+Tabla fija: ${tableId}
+Registros leídos: ${rowCount}
 
-🧠 Instrucción recibida:
+🧠 Instrucción:
 "${promptText}"
 
-👉 Los datos ya están en memoria. Listo para enviar a la IA.`;
+👉 Datos cargados. Ya puedes integrarlos con Groq.`;
 
-    console.log("Datos cargados correctamente:", tableData);
+    console.log("Datos de " + tableId + " cargados:", tableData);
 
   } catch (e) {
-    out.innerHTML = `<span class='error'>❌ Error al leer la tabla:</span>\n${e.message}\n\n<small>Asegúrate de que el ID sea exacto y tengas "Acceso completo" en el panel derecho.</small>`;
-    // Reseteamos el ID para que el usuario pueda intentar escribirlo de nuevo si falló
-    tableId = null;
+    out.innerHTML = `<span class='error'>❌ Error al leer la tabla '${tableId}':</span>\n${e.message}\n\n<small>Verifica que el nombre técnico sea exacto y el acceso esté en "Full" en el panel derecho.</small>`;
   }
 };
 </script>

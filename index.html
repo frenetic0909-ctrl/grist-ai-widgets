@@ -2,104 +2,105 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<title>Grist IA Auditor - Fixed ID</title>
+<title>Grist IA Auditor - Full Table</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 
 <style>
-  body {
-    font-family: system-ui, sans-serif;
-    background: #0f172a;
-    color: #e5e7eb;
-    padding: 12px;
-  }
+  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e5e7eb; padding: 12px; }
   .prompt-container {
-    background: #020617;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    padding: 8px;
-    min-height: 80px;
-    outline: none;
-    margin-bottom: 10px;
+    background: #020617; border: 1px solid #334155; border-radius: 6px;
+    padding: 8px; min-height: 60px; outline: none; margin-bottom: 10px;
   }
   button {
-    padding: 10px 16px;
-    background: #f59e0b;
-    color: #020617;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: bold;
-    width: 100%;
+    padding: 12px; border: none; border-radius: 6px; cursor: pointer;
+    font-weight: bold; width: 100%; background: #f59e0b; color: #020617;
   }
-  button:hover { background: #d97706; }
+  button:disabled { background: #475569; cursor: not-allowed; }
   pre {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    padding: 10px;
-    margin-top: 15px;
-    font-size: 13px;
-    white-space: pre-wrap;
-    color: #38bdf8;
+    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+    padding: 12px; margin-top: 15px; font-size: 13px; white-space: pre-wrap; color: #38bdf8;
   }
-  .error { color: #f87171; font-weight: bold; }
-  .setup-info { font-size: 11px; color: #94a3b8; margin-top: 10px; text-align: center; }
+  .status { font-size: 11px; color: #94a3b8; margin-top: 5px; text-align: center; }
 </style>
 </head>
 
 <body>
 
-<h3>🤖 Auditor IA</h3>
+<h3>📊 Auditor de Plantilla: base_unica</h3>
 
-<div id="promptInput" class="prompt-container" contenteditable="true">Analiza si hay inconsistencias en los datos de la tabla...</div>
+<div id="promptInput" class="prompt-container" contenteditable="true">Analiza si hay errores, duplicados o datos faltantes en esta tabla.</div>
 
-<button id="analyzeBtn">Analizar Tabla base_unica</button>
+<button id="analyzeBtn">Analizar Plantilla Completa</button>
+<div id="status" class="status">Listo para escanear base_unica</div>
 
-<pre id="output">Listo para analizar la tabla: base_unica</pre>
+<pre id="output">Los resultados de la IA aparecerán aquí...</pre>
 
 <script>
-// Definimos el ID de la tabla directamente aquí
-const tableId = "BASE_UNICA"; 
+const tableId = "base_unica"; // ID hardcodeado
 
-// Solicitamos acceso completo para poder ejecutar fetchTable
 grist.ready({ requiredAccess: 'full' });
 
 document.getElementById("analyzeBtn").onclick = async function() {
+  const btn = this;
   const out = document.getElementById("output");
+  const status = document.getElementById("status");
   const promptText = document.getElementById("promptInput").innerText.trim();
 
-  if (!promptText) {
-    out.innerHTML = "<span class='error'>❌ Error: El prompt está vacío.</span>";
-    return;
+  // Gestión de API Key
+  let apiKey = localStorage.getItem('groq_api_key');
+  if (!apiKey) {
+    apiKey = prompt("Introduce tu API Key de Groq (gsk_...):");
+    if (apiKey) localStorage.setItem('groq_api_key', apiKey);
+    else return;
   }
 
+  btn.disabled = true;
+  out.textContent = "⏳ Cargando datos de la tabla...";
+
   try {
-    out.textContent = "⏳ Leyendo tabla '" + tableId + "'...";
-
-    // Llamada directa usando el ID hardcodeado
+    // 1. Descargamos toda la tabla
     const tableData = await grist.docApi.fetchTable(tableId);
-    
-    // Calculamos el total de filas basándonos en la columna 'id'
     const rowCount = tableData.id ? tableData.id.length : 0;
+    
+    status.innerText = `📦 Datos cargados (${rowCount} filas). Enviando a IA...`;
 
-    out.textContent = `✅ ¡CONEXIÓN EXITOSA!
--------------------------
-Tabla fija: ${tableId}
-Registros leídos: ${rowCount}
+    // 2. Enviamos a Groq
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { 
+            role: "system", 
+            content: "Eres un auditor de datos experto. Recibirás una tabla completa en formato JSON. Tu objetivo es encontrar inconsistencias, errores de formato o datos inusuales." 
+          },
+          { 
+            role: "user", 
+            content: `Instrucción: ${promptText}\n\nDatos de la tabla:\n${JSON.stringify(tableData)}` 
+          }
+        ]
+      })
+    });
 
-🧠 Instrucción:
-"${promptText}"
+    const json = await response.json();
+    if (json.error) throw new Error(json.error.message);
 
-👉 Datos cargados. Ya puedes integrarlos con Groq.`;
-
-    console.log("Datos de " + tableId + " cargados:", tableData);
+    out.textContent = json.choices[0].message.content;
+    status.innerText = "✅ Análisis finalizado.";
 
   } catch (e) {
-    out.innerHTML = `<span class='error'>❌ Error al leer la tabla '${tableId}':</span>\n${e.message}\n\n<small>Verifica que el nombre técnico sea exacto y el acceso esté en "Full" en el panel derecho.</small>`;
+    out.innerHTML = `<span style="color: #f87171">❌ Error: ${e.message}</span>`;
+    status.innerText = "Error en el proceso.";
+    if (e.message.includes("API key")) localStorage.removeItem('groq_api_key');
+  } finally {
+    btn.disabled = false;
   }
 };
 </script>
 
 </body>
 </html>
-

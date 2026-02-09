@@ -6,13 +6,27 @@
     <script src="https://docs.getgrist.com/grist-api.js"></script>
     <title>Asistente Digitalización ARBA</title>
     <style>
-        body { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; font-family: sans-serif; }
-        #header-info { padding: 10px; background: #005580; color: white; font-size: 12px; border-bottom: 2px solid #00334d; }
+        body { 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        }
+        #header-info { 
+            padding: 10px; 
+            background: #005580; 
+            color: white; 
+            font-size: 12px; 
+            border-bottom: 2px solid #00334d;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
         #chat-container { flex-grow: 1; position: relative; }
     </style>
 </head>
 <body>
-    <div id="header-info">🤖 Analista Llama 3.1 | Esperando selección...</div>
+    <div id="header-info">🤖 Analista Llama 3.1 | Lectura Directa de Tabla Activada</div>
     <div id="chat-container">
         <flowise-fullchatbot></flowise-fullchatbot>
     </div>
@@ -20,19 +34,19 @@
     <script type="module">
         import Chatbot from "https://cdn.jsdelivr.net/npm/flowise-embed/dist/web.js"
 
-        // 1. OBTENER SERVIDOR DESDE LA URL (Ngrok o Local)
+        // 1. CONFIGURACIÓN DINÁMICA DE HOST
         const urlParams = new URLSearchParams(window.location.search);
         let serverIp = urlParams.get('server') || 'localhost';
-        
-        // Limpiamos protocolos previos para evitar el error "https://https://"
+
+        // Limpiamos protocolos para evitar el error "https://https://"
         serverIp = serverIp.replace(/^https?:\/\//, '');
 
-        // Si es Ngrok usamos HTTPS (puerto 443 implícito), si es IP usamos HTTP puerto 3000
+        // Si es Ngrok usamos HTTPS. Si es IP/Localhost usamos HTTP + Puerto 3000
         let apiHost = serverIp.includes('ngrok-free.dev') 
             ? `https://${serverIp}` 
             : `http://${serverIp}:3000`;
 
-        // 2. INICIALIZAR CHATBOT CON TU NUEVO ID
+        // 2. INICIALIZAR CHATBOT CON TU ÚLTIMO ID
         Chatbot.initFull({
             chatflowid: "329f80ca-570c-4028-991c-851f5e323b37",
             apiHost: apiHost,
@@ -40,36 +54,18 @@
                 chatWindow: {
                     showTitle: true,
                     title: 'Asistente de Digitalización',
-                    welcomeMessage: '¡Conectado! Selecciona una fila para analizar los planos.',
+                    welcomeMessage: '¡Hola! Ya estoy conectado a tu tabla de Grist. ¿Qué dato necesitas de los planos?',
                     backgroundColor: "#ffffff",
                 }
             }
         });
 
-        // 3. COMUNICACIÓN CON GRIST
-        function setupGrist() {
-            if (typeof grist !== 'undefined') {
-                grist.ready({ requiredAccess: 'read table' });
-
-                grist.onRecord((record) => {
-                    const infoBox = document.getElementById('header-info');
-                    if (record) {
-                        // Actualizamos el encabezado del widget
-                        infoBox.innerHTML = `<b>Fila:</b> ${record.id} | <b>Datos:</b> A:${record.A || ''} B:${record.B || ''}`;
-                        
-                        // Enviamos la fila al "contexto" del bot
-                        window.postMessage({
-                            type: 'set_context',
-                            data: { fila_actual: record }
-                        }, "*");
-                    }
-                });
-            } else {
-                setTimeout(setupGrist, 100);
-            }
+        // 3. CONEXIÓN CON GRIST
+        // Solo iniciamos la API para que Grist reconozca el widget, 
+        // pero la lectura de datos la hará Flowise internamente.
+        if (typeof grist !== 'undefined') {
+            grist.ready({ requiredAccess: 'read table' });
         }
-
-        setupGrist();
     </script>
 </body>
 </html>

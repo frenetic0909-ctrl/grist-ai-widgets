@@ -34,12 +34,16 @@
     <script type="module">
         import Chatbot from "https://cdn.jsdelivr.net/npm/flowise-embed/dist/web.js"
 
-        // 1. OBTENER IP DINÁMICA: Leemos el parámetro 'server' de la URL de Grist
+        // 1. CONFIGURACIÓN DINÁMICA DE HOST
         const urlParams = new URLSearchParams(window.location.search);
-        const serverIp = urlParams.get('server') || 'localhost'; 
-        const apiHost = `http://${serverIp}:3000`;
+        let serverIp = urlParams.get('server') || 'localhost';
+        
+        // Si usamos Ngrok, forzamos HTTPS para evitar el error de "Mixed Content"
+        let apiHost = serverIp.includes('ngrok-free.dev') 
+            ? `https://${serverIp}` 
+            : `http://${serverIp}:3000`;
 
-        // 2. INICIALIZAR CHATBOT: Usamos tu Chatflow ID de la PC del trabajo
+        // 2. INICIALIZAR CHATBOT
         Chatbot.initFull({
             chatflowid: "630da944-4257-4112-b2f3-ea9bb27f44bd",
             apiHost: apiHost,
@@ -53,26 +57,32 @@
             }
         });
 
-        // 3. CONEXIÓN CON GRIST: Solicitamos acceso de lectura a la tabla
-        grist.ready({ requiredAccess: 'read table' });
+        // 3. CONEXIÓN CON GRIST (Esperamos a que la librería esté lista)
+        function setupGrist() {
+            if (typeof grist !== 'undefined') {
+                grist.ready({ requiredAccess: 'read table' });
 
-        // 4. PASE DE DATOS: Enviamos la fila seleccionada al contexto del bot
-        grist.onRecord((record) => {
-            const infoBox = document.getElementById('header-info');
-            if (record) {
-                // Actualizamos la UI del widget
-                infoBox.innerHTML = `<b>Fila activa:</b> ID ${record.id} | <b>A:</b> ${record.A} <b>B:</b> ${record.B}`;
-                
-                // Enviamos el contexto mediante postMessage para que Flowise lo reciba
-                window.postMessage({
-                    type: 'set_context',
-                    data: { 
-                        origen: "Grist-Widget-GitHub",
-                        fila_actual: record 
+                grist.onRecord((record) => {
+                    const infoBox = document.getElementById('header-info');
+                    if (record) {
+                        infoBox.innerHTML = `<b>Fila activa:</b> ID ${record.id} | <b>A:</b> ${record.A} <b>B:</b> ${record.B}`;
+                        
+                        window.postMessage({
+                            type: 'set_context',
+                            data: { 
+                                origen: "Grist-Widget-GitHub",
+                                fila_actual: record 
+                            }
+                        }, "*");
                     }
-                }, "*");
+                });
+            } else {
+                // Reintento si la librería tarda en cargar
+                setTimeout(setupGrist, 100);
             }
-        });
+        }
+
+        setupGrist();
     </script>
 </body>
 </html>

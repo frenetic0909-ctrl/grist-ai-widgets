@@ -34,11 +34,14 @@
     <script type="module">
         import Chatbot from "https://cdn.jsdelivr.net/npm/flowise-embed/dist/web.js"
 
-        // 1. CONFIGURACIÓN DINÁMICA DE HOST
+        // 1. CONFIGURACIÓN DINÁMICA DE HOST (Con limpieza de protocolo)
         const urlParams = new URLSearchParams(window.location.search);
         let serverIp = urlParams.get('server') || 'localhost';
-        
-        // Si usamos Ngrok, forzamos HTTPS para evitar el error de "Mixed Content"
+
+        // Eliminamos cualquier "https://" o "http://" previo para evitar duplicados
+        serverIp = serverIp.replace(/^https?:\/\//, '');
+
+        // Si la URL es de ngrok, forzamos HTTPS. Si es IP/Localhost, usamos HTTP + Puerto 3000.
         let apiHost = serverIp.includes('ngrok-free.dev') 
             ? `https://${serverIp}` 
             : `http://${serverIp}:3000`;
@@ -65,8 +68,10 @@
                 grist.onRecord((record) => {
                     const infoBox = document.getElementById('header-info');
                     if (record) {
+                        // Actualizamos la cabecera con los datos de tu HP EliteDesk
                         infoBox.innerHTML = `<b>Fila activa:</b> ID ${record.id} | <b>A:</b> ${record.A} <b>B:</b> ${record.B}`;
                         
+                        // Enviamos el contexto de la fila al chatbot local
                         window.postMessage({
                             type: 'set_context',
                             data: { 
@@ -77,7 +82,7 @@
                     }
                 });
             } else {
-                // Reintento si la librería tarda en cargar
+                // Reintento de seguridad si la red de ARBA está lenta
                 setTimeout(setupGrist, 100);
             }
         }

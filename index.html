@@ -2,47 +2,75 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://docs.getgrist.com/grist-api.js"></script>
+    <title>Widget Asistente ARBA</title>
     <style>
-        body { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; font-family: sans-serif; }
-        #info { padding: 8px; background: #005580; color: white; font-size: 11px; }
+        body { 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        }
+        #header-info { 
+            padding: 10px; 
+            background: #005580; 
+            color: white; 
+            font-size: 12px; 
+            border-bottom: 2px solid #00334d;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #chat-container { flex-grow: 1; position: relative; }
     </style>
 </head>
 <body>
-    <div id="info">🤖 Asistente ARBA | Selecciona una fila...</div>
-    <div id="chat-container" style="flex-grow: 1;">
+    <div id="header-info">🤖 Asistente Local Llama 3.1 | Esperando selección en Grist...</div>
+    <div id="chat-container">
         <flowise-fullchatbot></flowise-fullchatbot>
     </div>
 
     <script type="module">
         import Chatbot from "https://cdn.jsdelivr.net/npm/flowise-embed/dist/web.js"
 
-        // Esperamos a que Grist esté listo para obtener la configuración
-        grist.ready({ requiredAccess: 'read table' });
+        // 1. OBTENER IP DINÁMICA: Leemos el parámetro 'server' de la URL de Grist
+        const urlParams = new URLSearchParams(window.location.search);
+        const serverIp = urlParams.get('server') || 'localhost'; 
+        const apiHost = `http://${serverIp}:3000`;
 
-        grist.onRecord((record) => {
-            if (record) {
-                document.getElementById('info').innerHTML = `Fila activa: ${record.id} | Analizando datos...`;
-                
-                // Enviar datos al bot
-                window.postMessage({
-                    type: 'set_context',
-                    data: { fila: record }
-                }, "*");
-            }
-        });
-
-        // Inicialización
+        // 2. INICIALIZAR CHATBOT: Usamos tu Chatflow ID de la PC del trabajo
         Chatbot.initFull({
             chatflowid: "630da944-4257-4112-b2f3-ea9bb27f44bd",
-            apiHost: "http://TU_IP_PUBLICA_O_LOCAL:3000", // Reemplaza esto al probar
+            apiHost: apiHost,
             theme: {
                 chatWindow: {
                     showTitle: true,
-                    title: 'Analista Llama 3.1',
-                    welcomeMessage: 'Hola, ¿qué quieres consultar de la tabla?',
-                    backgroundColor: "#ffffff"
+                    title: 'Analista de Datos',
+                    welcomeMessage: '¡Hola! Estoy listo para procesar los valores de Tabla.',
+                    backgroundColor: "#ffffff",
                 }
+            }
+        });
+
+        // 3. CONEXIÓN CON GRIST: Solicitamos acceso de lectura a la tabla
+        grist.ready({ requiredAccess: 'read table' });
+
+        // 4. PASE DE DATOS: Enviamos la fila seleccionada al contexto del bot
+        grist.onRecord((record) => {
+            const infoBox = document.getElementById('header-info');
+            if (record) {
+                // Actualizamos la UI del widget
+                infoBox.innerHTML = `<b>Fila activa:</b> ID ${record.id} | <b>A:</b> ${record.A} <b>B:</b> ${record.B}`;
+                
+                // Enviamos el contexto mediante postMessage para que Flowise lo reciba
+                window.postMessage({
+                    type: 'set_context',
+                    data: { 
+                        origen: "Grist-Widget-GitHub",
+                        fila_actual: record 
+                    }
+                }, "*");
             }
         });
     </script>
